@@ -1,0 +1,84 @@
+name: build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  package:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            pack: npm run pack:mac
+            e2e: true
+          - os: windows-latest
+            pack: npm run pack:win
+            # Electron + software video decode on Windows runners is flaky;
+            # unit + integration still run here.
+            e2e: false
+          - os: ubuntu-latest
+            pack: npm run pack:linux
+            e2e: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # npm may defer install scripts; this pulls the Electron binary either way.
+      - name: Ensure Electron binary
+        run: node -e "require('electron')"
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      - name: E2E (Linux needs a virtual display)
+        if: matrix.e2e && runner.os == 'Linux'
+        run: xvfb-run --auto-servernum npm run test:e2e
+
+      - name: E2E
+        if: matrix.e2e && runner.os != 'Linux'
+        run: npm run test:e2e
+
+      # Each runner packages for its own OS, so the bundled ffmpeg/ffprobe
+      # binaries always match the target platform.
+      - name: Package
+        run: ${{ matrix.pack }}
+        env:
+          # Unsigned builds; add signing secrets here when certificates exist.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installers-${{ matrix.os }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-${{ matrix.os }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            playwright-report
+            test-results

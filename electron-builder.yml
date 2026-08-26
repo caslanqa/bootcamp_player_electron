@@ -1,0 +1,49 @@
+appId: com.caslanqa.bootcampplayer
+productName: Bootcamp Player
+copyright: Copyright © 2026 caslanqa
+directories:
+  output: release
+  # build/icon.png (1024x1024, transparent) — .icns/.ico are derived from it.
+  buildResources: build
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+# ffmpeg/ffprobe are native binaries — they must live outside the asar to be spawnable.
+asarUnpack:
+  - node_modules/@ffmpeg-installer/**
+  - node_modules/@ffprobe-installer/**
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  category: public.app-category.education
+  darkModeSupport: true
+  # No Apple Developer cert wired up yet: ship unsigned, adhoc-signed builds.
+  identity: null
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  category: Education
+  maintainer: caslanqa
