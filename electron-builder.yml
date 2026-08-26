@@ -19,11 +19,14 @@ asarUnpack:
   - node_modules/@ffprobe-installer/**
 
 mac:
+  # arm64 only. An x64 bundle built on an arm64 host gets no ffmpeg binary
+  # (@ffmpeg-installer resolves per host), so it would ship broken. Add
+  # `arch: [arm64, x64]` back only alongside an x64 macOS builder.
   target:
     - target: dmg
-      arch: [arm64, x64]
+      arch: [arm64]
     - target: zip
-      arch: [arm64, x64]
+      arch: [arm64]
   category: public.app-category.education
   darkModeSupport: true
   # No Apple Developer cert wired up yet: ship unsigned, adhoc-signed builds.

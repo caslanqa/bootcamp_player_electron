@@ -265,7 +265,7 @@ codesign --verify --deep --strict "/Applications/Bootcamp Player.app" && echo "s
 `spctl -a` will still report *rejected* — that checks notarisation, which an
 ad-hoc signature cannot satisfy. It is not a sign of a broken build.
 
-Use the `-arm64` dmg on Apple Silicon and the `-x64` one on Intel.
+The prebuilt dmg is **Apple Silicon only** — see [Known limits](#known-limits).
 
 ### If macOS will not open the app
 
@@ -281,7 +281,7 @@ the binary inside the bundle and it prints the real error:
 | “cannot be opened because Apple cannot check it for malicious software” | Download quarantine still set | `xattr -dr com.apple.quarantine` |
 | “is damaged and can’t be opened. You should move it to the Trash” | Signature invalidated, or the dmg was truncated | Re-sign ad-hoc (below) |
 | Icon bounces once, then nothing | Runtime crash | Run the binary directly, read the error |
-| “bad CPU type in executable” | `-arm64` build on an Intel Mac | Install the `-x64` dmg |
+| “bad CPU type in executable” | arm64 build on an Intel Mac | No prebuilt Intel dmg — build on an Intel host |
 
 The one-shot repair — clears every download flag and gives the bundle a fresh,
 valid ad-hoc signature:
@@ -304,7 +304,7 @@ To see the state rather than change it:
 xattr -l "$APP"                    # is com.apple.quarantine still there?
 codesign -dv "$APP"                # expect Signature=adhoc, Identifier=com.caslanqa.bootcampplayer
 spctl -a -vvv "$APP"               # "rejected" is expected — the build is not notarised
-uname -m                           # arm64 or x86_64 — must match the dmg you installed
+uname -m                           # must say arm64; the prebuilt dmg is Apple Silicon only
 ls -t ~/Library/Logs/DiagnosticReports | head -5    # most recent crash reports
 ```
 
@@ -374,7 +374,7 @@ Prefer that over `--no-sandbox`, which turns the renderer sandbox off entirely.
 ## Packaging
 
 ```bash
-npm run pack:mac      # dmg + zip (arm64, x64)
+npm run pack:mac      # dmg + zip (arm64)
 npm run pack:win      # NSIS installer + portable exe
 npm run pack:linux    # AppImage + deb
 npm run pack:dir      # unpacked, for a quick look
@@ -484,19 +484,18 @@ filenames carry it automatically.
 | `ci.yml` | push to `main`, PRs | commitlint (PRs), typecheck, unit + integration, e2e under xvfb |
 | `release.yml` | `v*` tag, or manual dispatch | package per platform → artifacts → GitHub Release (tag only) |
 
-macOS packaging runs on a **self-hosted Mac** (`runs-on: [self-hosted, macOS, ARM64]`)
-because GitHub bills macOS minutes at 10×; Windows and Linux stay on hosted
-runners. Each platform must package itself — `@ffmpeg-installer` only fetches the
-host's binary, so cross-building ships an app with no ffmpeg.
+All three jobs run on GitHub-hosted runners: `macos-latest`, `windows-latest`,
+`ubuntu-latest`.
 
-The self-hosted runner has to be visible to this repository. A runner registered
-to another repo will not pick these jobs up. Register a new one from
-**Settings → Actions → Runners → New self-hosted runner**, or move an existing one
-to the organisation and grant this repo access. The `macOS` and `ARM64` labels are
-applied automatically; nothing custom is needed.
+Each platform packages itself, because `@ffmpeg-installer` only fetches the
+*host's* binary — a cross-built app would ship with no ffmpeg and fall back to
+whatever is on the user's PATH. The same rule applies to CPU architecture, and
+`macos-latest` is arm64, which is why the mac target is arm64-only.
 
-The build job ends with `rm -rf release out` — the runner is a persistent machine
-and each build leaves ~300MB behind.
+Note that GitHub bills macOS minutes at 10× on private repositories. A
+self-hosted Mac would avoid that, but a runner registration belongs to exactly one
+repo, org or enterprise — an existing runner registered elsewhere cannot serve
+this repo, it needs its own installation.
 
 ## Known limits
 
@@ -507,3 +506,5 @@ and each build leaves ~300MB behind.
 - Search covers loaded folders only — expand a folder to include it.
 - Drive access is read-only, and Google Docs-native files are not media, so they
   are filtered out of playlists.
+- The prebuilt macOS installer is Apple Silicon only. Intel Macs need a build
+  produced on an Intel host, so that the bundled ffmpeg matches the architecture.

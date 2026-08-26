@@ -22,9 +22,9 @@ on:
 jobs:
   build:
     name: ${{ matrix.name }}
-    # macOS builds on the self-hosted Mac (free, and GitHub charges 10x for macOS
-    # runners). Windows and Linux stay hosted: @ffmpeg-installer only fetches the
-    # host's binary, so each platform must package itself.
+    # Every platform packages itself: @ffmpeg-installer only fetches the host's
+    # binary, so a cross-built app would ship without ffmpeg. That applies to the
+    # CPU architecture too — macos-latest is arm64, hence arm64-only mac builds.
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -32,7 +32,7 @@ jobs:
       matrix:
         include:
           - name: macos
-            runner: [self-hosted, macOS, ARM64]
+            runner: macos-latest
             pack: npm run pack:mac
           - name: windows
             runner: windows-latest
@@ -92,7 +92,7 @@ jobs:
         with:
           name: installers-${{ matrix.name }}
           # Short-lived: the GitHub Release is the durable copy.
-          retention-days: 3
+          retention-days: 1
           if-no-files-found: error
           path: |
             release/*.dmg
@@ -100,12 +100,6 @@ jobs:
             release/*.exe
             release/*.AppImage
             release/*.deb
-
-      # The self-hosted runner is a real machine — do not leave a 300MB bundle behind.
-      - name: Clean build output
-        if: always()
-        shell: bash
-        run: rm -rf release out
 
   publish:
     name: GitHub Release
