@@ -1,6 +1,10 @@
 appId: com.caslanqa.bootcampplayer
 productName: Bootcamp Player
 copyright: Copyright © 2026 caslanqa
+# Space-free installer names so the install commands in the README stay simple.
+artifactName: BootcampPlayer-${version}-${arch}.${ext}
+# Gives unsigned macOS bundles a valid ad-hoc signature — see build/after-pack.js.
+afterPack: build/after-pack.js
 directories:
   output: release
   # build/icon.png (1024x1024, transparent) — .icns/.ico are derived from it.
@@ -33,6 +37,8 @@ win:
       arch: [x64]
 
 nsis:
+  # Distinct from the portable .exe, which takes the global artifactName.
+  artifactName: BootcampPlayer-Setup-${version}-${arch}.${ext}
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
@@ -47,3 +53,5 @@ linux:
       arch: [x64]
   category: Education
   maintainer: caslanqa
+  # Otherwise the command would be the package.json name, bootcamp_player_electron.
+  executableName: bootcamp-player

@@ -1,0 +1,4 @@
+#!/bin/sh
+
+# Cheap gate (~2s). The full suite runs on pre-push.
+npm run typecheck

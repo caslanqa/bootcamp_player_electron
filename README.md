@@ -30,8 +30,18 @@ macOS · Windows · Linux — Electron 44 · React 19 · TypeScript
   - [Why a local HTTP server](#why-a-local-http-server)
   - [Project layout](#project-layout)
 - [Tests](#tests)
+- [Installing](#installing)
+  - [macOS](#macos)
+  - [If macOS will not open the app](#if-macos-will-not-open-the-app)
+  - [Windows](#windows)
+  - [Linux](#linux)
 - [Packaging](#packaging)
+  - [Signing](#signing)
   - [Icon](#icon)
+- [Releasing](#releasing)
+  - [Commit convention](#commit-convention)
+  - [Cutting a release](#cutting-a-release)
+  - [CI and runners](#ci-and-runners)
 - [Known limits](#known-limits)
 
 ---
@@ -48,7 +58,8 @@ Successor to `BootcampPlayer_JavaFX_Full`. Same idea, the gaps closed:
 | Progress | none | resume position, watched marks, `done/total` per folder |
 | Subtitles | none | `.srt`/`.vtt` sidecars, auto-detected, converted to WebVTT |
 | Ordering | `10 Lesson` before `2 Lesson` | natural sort, folders first |
-| Tests | none | 132 unit + integration, 16 end-to-end |
+| Tests | none | 158 unit + integration, 16 end-to-end |
+| Releases | build by hand | conventional commits → version → tag → GitHub Release |
 
 ## Features
 
@@ -91,10 +102,12 @@ source**.
 | `npm run dev` | Dev build with hot reload |
 | `npm run build` | Compile main, preload and renderer into `out/` |
 | `npm start` | Preview the production build |
-| `npm run typecheck` | `tsc --noEmit` across all three processes |
+| `npm run typecheck` | App + tests, then `scripts/` under its stricter config |
 | `npm test` | Unit + integration (~1s) |
 | `npm run test:e2e` | Build, then drive the real app with Playwright |
 | `npm run pack:mac` / `:win` / `:linux` | Installers into `release/` |
+| `npm run commit` | Guided conventional commit |
+| `npm run release` | Bump version, changelog, commit, tag |
 
 ## Data sources
 
@@ -184,7 +197,15 @@ src/main/       lifecycle, IPC, stores
   server.ts     the 127.0.0.1 origin the <video> element loads from
 src/preload/    the only renderer↔main bridge (contextBridge, sandboxed)
 src/renderer/   React UI, zustand store, pure tree helpers
+scripts/        release tooling (.mts, run directly by node) + CI shell scripts
 ```
+
+Two TypeScript projects, because the code runs two different ways. The root
+`tsconfig.json` covers everything Vite compiles; `scripts/tsconfig.json` covers
+the `.mts` release tooling that **node executes directly** by stripping types, so
+it additionally forbids non-erasable syntax (`enum`, `namespace`, constructor
+parameter properties) and requires explicit `import type`. The app code uses
+parameter properties freely — esbuild compiles those properly, node could not.
 
 ## Tests
 
@@ -201,6 +222,155 @@ npm run test:e2e       # builds, then drives the real app
 
 Test media is generated once with ffmpeg into `tests/.fixtures/` (gitignored).
 
+## Installing
+
+**The builds carry no Developer ID or Authenticode certificate.** macOS bundles
+are ad-hoc signed so they are internally valid and will launch, but neither OS
+can verify *who* published them — so each one needs one extra step the first time.
+Nothing below weakens system-wide security: each command clears the flag on this
+one file.
+
+Grab the installers from the repository's **Releases** page, or build them
+yourself — a local `npm run pack:*` writes into `release/`. List them if you are
+unsure of a name:
+
+```bash
+ls release/
+```
+
+### macOS
+
+The `.dmg` arrives quarantined because it was downloaded, and Gatekeeper blocks
+quarantined apps that are not notarised. Copy it out, then clear the flag:
+
+```bash
+# Mount, copy to /Applications, unmount
+VOL=$(hdiutil attach release/BootcampPlayer-1.0.0-arm64.dmg -nobrowse | grep -o '/Volumes/.*')
+cp -R "$VOL/Bootcamp Player.app" /Applications/
+hdiutil detach "$VOL"
+
+# Clear the download quarantine — without this you get
+# "can't be opened because Apple cannot check it for malicious software"
+xattr -dr com.apple.quarantine "/Applications/Bootcamp Player.app"
+
+open "/Applications/Bootcamp Player.app"
+```
+
+Confirm the bundle is intact at any point:
+
+```bash
+codesign --verify --deep --strict "/Applications/Bootcamp Player.app" && echo "signature ok"
+```
+
+`spctl -a` will still report *rejected* — that checks notarisation, which an
+ad-hoc signature cannot satisfy. It is not a sign of a broken build.
+
+Use the `-arm64` dmg on Apple Silicon and the `-x64` one on Intel.
+
+### If macOS will not open the app
+
+Start by asking macOS what is actually wrong instead of reading the modal — run
+the binary inside the bundle and it prints the real error:
+
+```bash
+"/Applications/Bootcamp Player.app/Contents/MacOS/Bootcamp Player"
+```
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| “cannot be opened because Apple cannot check it for malicious software” | Download quarantine still set | `xattr -dr com.apple.quarantine` |
+| “is damaged and can’t be opened. You should move it to the Trash” | Signature invalidated, or the dmg was truncated | Re-sign ad-hoc (below) |
+| Icon bounces once, then nothing | Runtime crash | Run the binary directly, read the error |
+| “bad CPU type in executable” | `-arm64` build on an Intel Mac | Install the `-x64` dmg |
+
+The one-shot repair — clears every download flag and gives the bundle a fresh,
+valid ad-hoc signature:
+
+```bash
+APP="/Applications/Bootcamp Player.app"
+
+xattr -cr "$APP"                                    # drop quarantine + provenance
+codesign --force --deep --sign - "$APP"             # re-sign ad-hoc
+codesign --verify --deep --strict "$APP" && echo "signature ok"
+open "$APP"
+```
+
+`codesign` ships with the Xcode command line tools; if it is missing, run
+`xcode-select --install` first.
+
+To see the state rather than change it:
+
+```bash
+xattr -l "$APP"                    # is com.apple.quarantine still there?
+codesign -dv "$APP"                # expect Signature=adhoc, Identifier=com.caslanqa.bootcampplayer
+spctl -a -vvv "$APP"               # "rejected" is expected — the build is not notarised
+uname -m                           # arm64 or x86_64 — must match the dmg you installed
+ls -t ~/Library/Logs/DiagnosticReports | head -5    # most recent crash reports
+```
+
+On macOS 15 and later, right-click → **Open** no longer bypasses Gatekeeper for
+an app that is not notarised. Either use the `xattr` command above, or launch it
+once, let it be blocked, then approve it in **System Settings → Privacy &
+Security → Open Anyway**.
+
+If the app launches but misbehaves, reset its profile — settings, watch progress,
+bookmarks and the transcode cache all live in one directory:
+
+```bash
+rm -rf "$HOME/Library/Application Support/bootcamp_player_electron"
+```
+
+### Windows
+
+Run in **PowerShell** from the folder holding the installer:
+
+```powershell
+# Confirm what you have: NotSigned is expected
+Get-AuthenticodeSignature .\BootcampPlayer-Setup-1.0.0-x64.exe | Format-List Status
+
+# Remove the "downloaded from the internet" mark, then install
+Unblock-File .\BootcampPlayer-Setup-1.0.0-x64.exe
+.\BootcampPlayer-Setup-1.0.0-x64.exe
+```
+
+SmartScreen may still show *Windows protected your PC* — **More info → Run
+anyway**. `Unblock-File` removes the zone marker; the reputation warning is a
+separate check that only a purchased certificate clears.
+
+Unattended install, and the portable build which needs no installer at all:
+
+```powershell
+.\BootcampPlayer-Setup-1.0.0-x64.exe /S          # silent, current user
+.\BootcampPlayer-1.0.0-x64.exe                   # portable, just runs
+```
+
+### Linux
+
+AppImage — mark it executable and run it, no install step:
+
+```bash
+chmod +x release/BootcampPlayer-*.AppImage
+./release/BootcampPlayer-*.AppImage
+```
+
+Debian / Ubuntu package:
+
+```bash
+sudo apt install ./release/BootcampPlayer-*.deb
+bootcamp-player
+```
+
+On Ubuntu 24.04+ the AppImage can die with a `chrome-sandbox` / user-namespace
+error, because AppArmor restricts unprivileged namespaces for unconfined
+binaries. Either install the `.deb` (which ships a proper SUID sandbox helper), or
+allow namespaces for that one file:
+
+```bash
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0   # until reboot
+```
+
+Prefer that over `--no-sandbox`, which turns the renderer sandbox off entirely.
+
 ## Packaging
 
 ```bash
@@ -212,12 +382,26 @@ npm run pack:dir      # unpacked, for a quick look
 
 > **Build each platform on that platform.** `@ffmpeg-installer` and
 > `@ffprobe-installer` only install the host's binary, so cross-building ships an
-> app with no ffmpeg. `.github/workflows/build.yml` runs a three-OS matrix that
-> gets this right and uploads the installers as artifacts.
+> app with no ffmpeg. [`release.yml`](#ci-and-runners) runs a three-OS matrix that
+> gets this right — see [Releasing](#releasing).
 
-Builds are unsigned — `mac.identity: null` in `electron-builder.yml`,
-`CSC_IDENTITY_AUTO_DISCOVERY: false` in CI. Add certificates in those two places
-when you have them.
+Artifact names are `BootcampPlayer-${version}-${arch}.${ext}`, with the NSIS
+installer as `BootcampPlayer-Setup-${version}-${arch}.exe`.
+
+### Signing
+
+Builds are unsigned: `mac.identity: null` in `electron-builder.yml`,
+`CSC_IDENTITY_AUTO_DISCOVERY: false` in CI. Add a Developer ID and an
+Authenticode certificate in those two places to make [Installing](#installing) a
+plain double-click.
+
+Until then, `build/after-pack.js` re-signs macOS bundles ad-hoc. This is not
+cosmetic: skipping signing leaves the bundle carrying the ad-hoc signature the
+Electron binary shipped with, which electron-builder's own edits invalidate.
+`codesign --verify` fails on that and macOS reports the app as *damaged* — a state
+no Gatekeeper override can clear. The hook replaces it with a valid ad-hoc
+signature under the real bundle identifier, so the app launches once the user
+clears the download quarantine.
 
 ### Icon
 
@@ -231,6 +415,88 @@ python3 build/make-icon.py path/to/new-artwork.png build/icon.png
 
 That script flood-fills the white surround to transparency. Skip it and the icon
 shows up as a white tile in the Dock and taskbar.
+
+## Releasing
+
+Version numbers come from the commit log, and a pushed tag is what publishes.
+
+```bash
+npm run release:dry      # what would the next version be, and why
+npm run release          # bump + CHANGELOG + commit + tag, nothing pushed
+git push --follow-tags origin main
+```
+
+The tag push runs `.github/workflows/release.yml`, which packages all three
+platforms and attaches the installers to a **GitHub Release** named after the tag.
+Release notes are the matching `CHANGELOG.md` section. Build artifacts are also
+kept for 3 days on the run page, as a fallback while a release is being debugged.
+
+### Commit convention
+
+[Conventional Commits](https://www.conventionalcommits.org/), enforced by
+commitlint in a `commit-msg` hook *and* on pull requests, since a hook can be
+skipped with `--no-verify`.
+
+```text
+feat(player): add a pinned mini player
+fix(media): pass -f mp4 so ffmpeg can write to a .part file
+feat(ipc)!: rename the progress channel      ← breaking
+```
+
+| | |
+| --- | --- |
+| **Types** | `feat` `fix` `docs` `style` `refactor` `perf` `test` `build` `ci` `chore` `revert` `ai` |
+| **Scopes** (optional) | `player` `playlist` `providers` `drive` `media` `server` `ipc` `ui` `settings` `build` `ci` `deps` `tests` `docs` `release` |
+
+`npm run commit` walks you through it interactively. Git hooks, installed by
+husky on `npm install`:
+
+| Hook | Runs |
+| --- | --- |
+| `commit-msg` | commitlint |
+| `pre-commit` | `npm run typecheck` (~2s) |
+| `pre-push` | `npm test` |
+
+### Cutting a release
+
+`npm run release` reads every commit since the last tag and picks the bump
+itself:
+
+| Commit contains | Bump |
+| --- | --- |
+| `!` after the type, or a `BREAKING CHANGE:` footer | **major** |
+| any `feat` | **minor** |
+| any `fix` or `perf` | **patch** |
+| only `docs`, `chore`, `style`, `test`… | **none** — it stops and says so |
+
+Then it writes the new version into `package.json`, prepends a grouped section to
+`CHANGELOG.md`, commits it as `chore(release): vX.Y.Z`, and creates the annotated
+tag. Override the level with `--major` / `--minor` / `--patch`; inspect first with
+`--dry-run`. It refuses to run on a dirty working tree, and it never pushes.
+
+Because electron-builder reads the version from `package.json`, the installer
+filenames carry it automatically.
+
+### CI and runners
+
+| Workflow | Trigger | Does |
+| --- | --- | --- |
+| `ci.yml` | push to `main`, PRs | commitlint (PRs), typecheck, unit + integration, e2e under xvfb |
+| `release.yml` | `v*` tag, or manual dispatch | package per platform → artifacts → GitHub Release (tag only) |
+
+macOS packaging runs on a **self-hosted Mac** (`runs-on: [self-hosted, macOS, ARM64]`)
+because GitHub bills macOS minutes at 10×; Windows and Linux stay on hosted
+runners. Each platform must package itself — `@ffmpeg-installer` only fetches the
+host's binary, so cross-building ships an app with no ffmpeg.
+
+The self-hosted runner has to be visible to this repository. A runner registered
+to another repo will not pick these jobs up. Register a new one from
+**Settings → Actions → Runners → New self-hosted runner**, or move an existing one
+to the organisation and grant this repo access. The `macOS` and `ARM64` labels are
+applied automatically; nothing custom is needed.
+
+The build job ends with `rm -rf release out` — the runner is a persistent machine
+and each build leaves ~300MB behind.
 
 ## Known limits
 

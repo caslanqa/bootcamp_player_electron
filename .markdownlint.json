@@ -1,0 +1,8 @@
+{
+  "//": "The README opens with a centered logo block, which needs raw HTML and therefore has no heading on line 1.",
+  "MD033": { "allowed_elements": ["div", "img"] },
+  "MD041": false,
+
+  "//2": "Prose wraps at ~80. Table rows and code cannot wrap, so they are exempt.",
+  "MD013": { "line_length": 100, "tables": false, "code_blocks": false }
+}

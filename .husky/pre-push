@@ -1,0 +1,4 @@
+#!/bin/sh
+
+# Unit + integration only — e2e needs a build and belongs in CI.
+npm test

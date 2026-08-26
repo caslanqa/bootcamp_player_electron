@@ -1,0 +1,23 @@
+{
+  // scripts/release/*.mts are run by `node file.mts` — node strips the types and
+  // executes the result, it does not compile it. So these files live under
+  // stricter rules than the app code, which esbuild transforms properly.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // Match how node actually resolves, not how a bundler would.
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+
+    // No enum / namespace / parameter properties / import= : node cannot emit
+    // the runtime code those need.
+    "erasableSyntaxOnly": true,
+
+    // Forces `import type` to be explicit. Without it a type-only import looks
+    // like a value import to node, which leaves it in place and then fails the
+    // ESM named-export check at runtime.
+    "verbatimModuleSyntax": true
+  },
+  "include": ["**/*.mts"]
+}

@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
+    // Pinned to match target: nothing here uses a post-ES2022 API, and the
+    // editor JSON schema still rejects newer lib names.
     "target": "ES2022",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
@@ -14,10 +16,15 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,
+    // A test imports scripts/release/version.mts by its real extension.
+    "allowImportingTsExtensions": true,
     "types": ["node", "vite/client"],
     "paths": {
       "@shared/*": ["./src/shared/*"]
     }
   },
+  // Everything Vite compiles (main, preload, renderer) plus the tests.
+  // scripts/ has its own config: node runs those files directly, under rules
+  // this one deliberately does not impose. See scripts/tsconfig.json.
   "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "*.config.ts"]
 }

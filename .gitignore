@@ -1,12 +1,17 @@
 node_modules/
-out/
-release/
-dist/
+
+# Build output — anchored to the repo root on purpose. An unanchored "release/"
+# also matches scripts/release/, which silently excluded the release tooling.
+/out/
+/release/
+/dist/
+
 .vite/
-coverage/
-playwright-report/
-test-results/
+/coverage/
+/playwright-report/
+/test-results/
 tests/.fixtures/
+
 .DS_Store
 *.log
 .env

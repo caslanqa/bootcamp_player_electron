@@ -1,0 +1,54 @@
+name: CI
+
+# Branch pushes and PRs only — tag pushes are handled by release.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  checks:
+    name: typecheck + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # commitlint needs the PR's commits, not just the tip.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # npm may defer install scripts; this pulls the Electron binary either way.
+      - name: Ensure Electron binary
+        run: node -e "require('electron')"
+
+      # Hooks can be bypassed with --no-verify, so the convention is enforced here too.
+      - name: Lint commit messages
+        if: github.event_name == 'pull_request'
+        run: npx commitlint --from "origin/${{ github.base_ref }}" --to HEAD --verbose
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # Electron needs a display; the e2e suite drives the real window.
+      - name: E2E
+        run: xvfb-run --auto-servernum npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            playwright-report
+            test-results
