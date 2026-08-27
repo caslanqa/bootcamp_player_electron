@@ -42,14 +42,14 @@ test('a configured source skips the gate on the next launch', async () => {
   await second.app.close()
 })
 
-test('the admin panel stays hidden for a signed-out user', async () => {
+test('a local-only user sees no Drive session', async () => {
   const paths = await fixtures()
   const { app, page } = await launch(freshProfile())
   await addLocalSource(page, paths.course)
 
   await openSettings(page)
-  await expect(page.getByTestId('admin-panel')).toHaveCount(0)
   await expect(page.getByText('Not connected')).toBeVisible()
+  await expect(page.getByTestId('drive-sign-in')).toBeVisible()
   await page.getByTestId('close-settings').click()
 
   await app.close()

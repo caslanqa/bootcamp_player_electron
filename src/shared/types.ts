@@ -88,25 +88,6 @@ export interface GDriveStatus {
   email?: string
 }
 
-/** One entry in the course folder's Drive access list. */
-export interface AccessEntry {
-  /** Drive permission id — what revoke() needs. */
-  id: string
-  email: string | null
-  name: string | null
-  /** owner | organizer | fileOrganizer | writer | commenter | reader */
-  role: string
-  isOwner: boolean
-  /** True for the account currently signed in. */
-  isSelf: boolean
-}
-
-export interface AdminStatus {
-  /** The signed-in account owns the course folder. */
-  isAdmin: boolean
-  /** Drive write scope granted, so grant/revoke can actually be called. */
-  canManage: boolean
-}
 
 export interface ReleaseAsset {
   name: string

@@ -3,9 +3,9 @@ import { join } from 'node:path'
 import type { Settings } from '@shared/types'
 import { GDriveAuth } from './auth/gdrive-oauth'
 import { driveRoot, GDRIVE, RELEASE_REPO } from './config'
-import { DriveAdmin } from './drive-admin'
 import { registerIpc, syncDriveSource, type AppContext } from './ipc'
 import { MediaPreparer } from './media/prepare'
+import { GDriveProvider } from './providers/gdrive'
 import { ProviderRegistry } from './providers/registry'
 import { StreamServer } from './server'
 import { Updater } from './updater'
@@ -96,7 +96,7 @@ async function boot(): Promise<void> {
 
   // A memory-only token cannot survive a restart; drop the stale marker.
   if (library.get().gdriveToken === MEMORY_MARKER && !memoryToken.refresh) {
-    library.set({ gdriveToken: null, gdriveEmail: null, gdriveScopes: null })
+    library.set({ gdriveToken: null, gdriveEmail: null })
   }
 
   nativeTheme.themeSource = settings.get().theme
@@ -122,15 +122,11 @@ async function boot(): Promise<void> {
     getCredentials: () => GDRIVE,
     loadToken: () => ({
       token: library.get().gdriveToken,
-      email: library.get().gdriveEmail,
-      scopes: library.get().gdriveScopes
+      email: library.get().gdriveEmail
     }),
-    saveToken: (token, email, scopes) =>
-      library.set({
-        gdriveToken: token,
-        gdriveEmail: email,
-        gdriveScopes: scopes === undefined ? library.get().gdriveScopes : scopes
-      })
+    saveToken: (token, email) => {
+      library.set({ gdriveToken: token, gdriveEmail: email })
+    }
   })
 
   const registry = new ProviderRegistry(
@@ -158,7 +154,12 @@ async function boot(): Promise<void> {
     server,
     preparer,
     auth,
-    driveAdmin: new DriveAdmin(driveRoot(), (force) => auth.getAccessToken(force)),
+    // Drive answers 404 for a folder that was never shared, which is a truer
+    // membership check than any list the app could keep.
+    canReadCourseFolder: async () => {
+      const probe = new GDriveProvider(driveRoot(), (force) => auth.getAccessToken(force))
+      return (await probe.stat(driveRoot()).catch(() => null)) !== null
+    },
     updater: new Updater({
       repo: RELEASE_REPO,
       currentVersion: app.getVersion(),

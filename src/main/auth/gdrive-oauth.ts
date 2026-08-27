@@ -5,21 +5,15 @@ import type { GDriveCredentials, GDriveStatus } from '@shared/types'
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const REVOKE_URL = 'https://oauth2.googleapis.com/revoke'
-/** What a student needs: read the course folder, nothing else. */
-export const READ_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
-
 /**
- * Additional scope the folder owner needs to grant and revoke access from the
- * admin panel — permissions.create/delete accept nothing narrower for a folder
- * the app did not create. Requested only when the admin asks for it, so a
- * student's consent screen never mentions write access.
+ * Read the course folder, nothing else. Sharing is managed in the Google Cloud
+ * Console, not in the app, so nothing here ever needs write access — which keeps
+ * "see, edit, create and delete all of your Drive files" off the consent screen.
  */
-export const MANAGE_SCOPE = 'https://www.googleapis.com/auth/drive'
+export const READ_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
 const LOGIN_TIMEOUT_MS = 5 * 60_000
 
 export interface SignInOptions {
-  /** Ask for write access too (admin only). */
-  manage?: boolean
   /** False keeps the refresh token in memory for this session only. */
   remember?: boolean
 }
@@ -34,8 +28,8 @@ export interface OAuthDeps {
   encrypt(plain: string, remember: boolean): string
   decrypt(cipher: string): string
   getCredentials(): GDriveCredentials
-  loadToken(): { token: string | null; email: string | null; scopes: string | null }
-  saveToken(token: string | null, email: string | null, scopes?: string | null): void
+  loadToken(): { token: string | null; email: string | null }
+  saveToken(token: string | null, email: string | null): void
   fetchImpl?: typeof fetch
 }
 
@@ -75,8 +69,6 @@ interface TokenResponse {
   access_token: string
   expires_in: number
   refresh_token?: string
-  /** Space-separated list of what Google actually granted. */
-  scope?: string
 }
 
 /**
@@ -104,11 +96,6 @@ export class GDriveAuth {
     }
   }
 
-  /** True once the user has consented to write access as well as reading. */
-  hasManageScope(): boolean {
-    const { scopes } = this.deps.loadToken()
-    return (scopes ?? '').split(/\s+/).includes(MANAGE_SCOPE)
-  }
 
   private refreshToken(): string | null {
     const { token } = this.deps.loadToken()
@@ -142,7 +129,7 @@ export class GDriveAuth {
     })
     if (!res.ok) {
       // A dead refresh token can never recover; drop it so the UI asks for a new login.
-      this.deps.saveToken(null, null, null)
+      this.deps.saveToken(null, null)
       throw new Error(describeTokenError(res.status, await res.text()))
     }
     const json = (await res.json()) as TokenResponse
@@ -153,7 +140,6 @@ export class GDriveAuth {
 
   async signIn(options: SignInOptions = {}): Promise<GDriveStatus> {
     const remember = options.remember !== false
-    const scopes = options.manage ? [READ_SCOPE, MANAGE_SCOPE] : [READ_SCOPE]
     const { clientId, clientSecret } = this.deps.getCredentials()
     if (!clientId.trim() || !clientSecret.trim()) {
       throw new Error(
@@ -171,9 +157,7 @@ export class GDriveAuth {
         client_id: clientId,
         redirect_uri: `http://127.0.0.1:${port}`,
         response_type: 'code',
-        scope: scopes.join(' '),
-        // Keeps read access when the admin later consents to write as well.
-        include_granted_scopes: 'true',
+        scope: READ_SCOPE,
         code_challenge: challenge,
         code_challenge_method: 'S256',
         state,
@@ -206,13 +190,7 @@ export class GDriveAuth {
       this.accessToken = json.access_token
       this.expiresAt = Date.now() + (json.expires_in - 60) * 1000
       const email = await this.fetchEmail(json.access_token)
-      // Only what Google says it granted. Falling back to what we *asked* for
-      // would light up the admin panel and then fail on the first grant.
-      this.deps.saveToken(
-        this.deps.encrypt(json.refresh_token, remember),
-        email,
-        json.scope ?? null
-      )
+      this.deps.saveToken(this.deps.encrypt(json.refresh_token, remember), email)
       return this.status()
     } finally {
       server.close()
@@ -223,7 +201,7 @@ export class GDriveAuth {
     const refresh = this.refreshToken()
     this.accessToken = null
     this.expiresAt = 0
-    this.deps.saveToken(null, null, null)
+    this.deps.saveToken(null, null)
     if (refresh) await this.revoke(refresh)
     return this.status()
   }

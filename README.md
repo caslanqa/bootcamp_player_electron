@@ -26,7 +26,7 @@ macOS · Windows · Linux — Electron 44 · React 19 · TypeScript
   - [Google Drive](#google-drive)
     - [The client secret](#the-client-secret)
     - [Who can sign in](#who-can-sign-in)
-    - [Managing access (admin)](#managing-access-admin)
+    - [Granting access](#granting-access)
 - [Keyboard](#keyboard)
 - [How it works](#how-it-works)
   - [Playback pipeline](#playback-pipeline)
@@ -57,13 +57,13 @@ Successor to `BootcampPlayer_JavaFX_Full`. Same idea, the gaps closed:
 | | JavaFX version | This one |
 | --- | --- | --- |
 | Storage | one local folder, picked every launch | any number of local **and** Google Drive sources, saved |
-| Access | anyone with the files | Google sign-in gate, access managed from an admin panel |
+| Access | anyone with the files | Google sign-in gate: only accounts the course folder is shared with |
 | Playlist | whole tree scanned eagerly | lazy per folder — a 2000-lesson Drive tree opens instantly |
 | Formats | whatever JavaFX Media supported | anything ffmpeg reads, converted once and cached |
 | Progress | none | resume position, watched marks, `done/total` per folder |
 | Subtitles | none | `.srt`/`.vtt` sidecars, auto-detected, converted to WebVTT |
 | Ordering | `10 Lesson` before `2 Lesson` | natural sort, folders first |
-| Tests | none | 246 unit + integration, 21 end-to-end |
+| Tests | none | 220 unit + integration, 21 end-to-end |
 | Releases | build by hand | conventional commits → version → tag → GitHub Release |
 
 ## Features
@@ -71,10 +71,6 @@ Successor to `BootcampPlayer_JavaFX_Full`. Same idea, the gaps closed:
 **Sign in, then watch** — the app opens on a Google sign-in gate. There is no
 password to invent or forget: the course folder is shared with specific accounts,
 so signing in *is* the membership check. Local folders need no account at all.
-
-**Access panel for the owner** — sign in as the account that owns the course
-folder and Settings grows a panel that adds and removes people through Drive's
-own permissions, so the list is real rather than a copy.
 
 **Sources** — mix local folders and Drive folders, switch from the sidebar.
 Folders load on expand, never up front.
@@ -213,6 +209,8 @@ Two layers, and only the first one is enforcement:
 | Drive sharing on the folder | who can read a single byte of the course | Google — unbypassable |
 | OAuth consent screen audience | who can complete sign-in at all | Google |
 
+Both are set in the console — see [Granting access](#granting-access).
+
 `drive.readonly` is a **restricted** scope, which limits what the consent screen
 can be:
 
@@ -225,21 +223,25 @@ can be:
 For a closed cohort, *Internal* is the clean answer; the test-user list is the
 practical one.
 
-#### Managing access (admin)
+#### Granting access
 
-Whoever **owns the course folder in Drive** is the admin — there is no email to
-configure, and it cannot drift out of sync. Sign in with that account and
-Settings grows a **Course access** panel listing everyone who can read the
-folder, with an email box to add people and a Remove button to take access away.
+Two separate gates, both in the Google Cloud Console, both done by hand:
 
-Grant and revoke call Drive's permissions API directly, so the list you see is
-the real one and a change takes effect immediately. Google emails each new person
-the folder link.
+| Gate | Where | Decides |
+| --- | --- | --- |
+| **Test users** | Console → **Google Auth Platform → Audience → Test users** | who can sign in at all, while the consent screen is in Testing |
+| **Folder sharing** | Drive → the course folder → **Share** | who can read the lessons |
 
-Changing sharing needs Drive write permission, which the app requests **only when
-the admin asks for it** — the panel shows an *Allow this app to manage sharing*
-button that re-runs consent with the wider scope. A student's consent screen never
-mentions write access.
+Both are needed. A test user the folder was never shared with signs in and is
+told the course is not available to them; a shared account that is not a test
+user cannot sign in at all.
+
+The app deliberately manages **neither** list. Google exposes no API for the
+test-user list, so half the job would stay manual either way — and the other half
+would cost the app the full `drive` scope, putting *"see, edit, create and delete
+all of your Google Drive files"* on the owner's consent screen to save two clicks
+in a console they already have open. It asks for `drive.readonly` and nothing
+more.
 
 ## Keyboard
 
@@ -636,8 +638,5 @@ this repo, it needs its own installation.
 - With an *External → Testing* consent screen, Google expires Drive refresh
   tokens after 7 days, so students have to sign in again weekly. An *Internal*
   consent screen on a Workspace domain has no such limit.
-- Managing access from the admin panel needs the full `drive` scope, because
-  Drive offers nothing narrower for a folder the app did not create. It is
-  requested only for the owner, and only on demand.
 - The prebuilt macOS installer is Apple Silicon only. Intel Macs need a build
   produced on an Intel host, so that the bundled ffmpeg matches the architecture.

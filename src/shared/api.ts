@@ -1,6 +1,4 @@
 import type {
-  AccessEntry,
-  AdminStatus,
   Bookmark,
   DataSource,
   GDriveStatus,
@@ -55,15 +53,6 @@ export interface Api {
     /** `remember: false` keeps the token in memory for this session only. */
     signIn(options?: { remember?: boolean }): Promise<GDriveStatus>
     signOut(): Promise<GDriveStatus>
-  }
-  /** Only meaningful for the account that owns the course folder. */
-  admin: {
-    status(): Promise<AdminStatus>
-    list(): Promise<AccessEntry[]>
-    grant(email: string): Promise<AccessEntry[]>
-    revoke(permissionId: string): Promise<AccessEntry[]>
-    /** Re-run consent asking for Drive write access. */
-    elevate(): Promise<AdminStatus>
   }
   update: {
     /** Never rejects for offline or rate-limited; see UpdateInfo.error. */

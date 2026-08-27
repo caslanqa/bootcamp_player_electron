@@ -46,13 +46,6 @@ const api: Api = {
     signIn: (options) => invoke('gdrive:signIn', options),
     signOut: () => invoke('gdrive:signOut')
   },
-  admin: {
-    status: () => invoke('admin:status'),
-    list: () => invoke('admin:list'),
-    grant: (email) => invoke('admin:grant', email),
-    revoke: (permissionId) => invoke('admin:revoke', permissionId),
-    elevate: () => invoke('admin:elevate')
-  },
   update: {
     check: () => invoke('update:check'),
     download: () => invoke('update:download'),
