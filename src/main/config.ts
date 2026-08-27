@@ -34,6 +34,9 @@ export const GDRIVE = {
   sourceName: 'Bootcamp course'
 }
 
+/** Where update checks look for releases: "owner/repo" on GitHub. */
+export const RELEASE_REPO = 'caslanqa/bootcamp_player_electron'
+
 /**
  * Can this build actually complete a sign-in? Both halves have to be present:
  * the client ID is committed, but the secret is injected at build time and is

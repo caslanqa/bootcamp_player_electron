@@ -38,6 +38,7 @@ macOS · Windows · Linux — Electron 44 · React 19 · TypeScript
   - [If macOS will not open the app](#if-macos-will-not-open-the-app)
   - [Windows](#windows)
   - [Linux](#linux)
+- [Updates](#updates)
 - [Packaging](#packaging)
   - [Signing](#signing)
   - [Icon](#icon)
@@ -62,7 +63,7 @@ Successor to `BootcampPlayer_JavaFX_Full`. Same idea, the gaps closed:
 | Progress | none | resume position, watched marks, `done/total` per folder |
 | Subtitles | none | `.srt`/`.vtt` sidecars, auto-detected, converted to WebVTT |
 | Ordering | `10 Lesson` before `2 Lesson` | natural sort, folders first |
-| Tests | none | 206 unit + integration, 20 end-to-end |
+| Tests | none | 246 unit + integration, 21 end-to-end |
 | Releases | build by hand | conventional commits → version → tag → GitHub Release |
 
 ## Features
@@ -94,6 +95,9 @@ lesson (and into the next folder when one runs out).
 always-on-top mini player.
 
 **Bookmarks with notes** — timestamped, click to jump back.
+
+**Updates itself** — checks GitHub Releases, downloads the right installer for
+your platform and architecture, and hands it to the OS.
 
 **Plus** — search across loaded lessons, dark / light / system theme, full
 keyboard control.
@@ -433,6 +437,37 @@ sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0   # until reboot
 ```
 
 Prefer that over `--no-sandbox`, which turns the renderer sandbox off entirely.
+
+## Updates
+
+Settings has an **Updates** panel: it shows the running version, checks GitHub
+Releases, downloads the installer for your platform and architecture, and opens
+it. The app also checks once quietly, four seconds after launch, and puts an
+**↑ Update to x.y.z** button in the top bar when there is something newer. A
+failed check — offline, rate-limited, no releases yet — is reported in the panel
+and nowhere else.
+
+This is deliberately not `electron-updater`. On macOS that goes through
+Squirrel.Mac, which refuses to install an update that is not signed with a
+Developer ID, so on the one platform these builds target it would simply fail.
+
+One upside of fetching the file ourselves: **a download the app makes never gets
+the `com.apple.quarantine` flag** — only downloads that go through a browser do —
+so updating needs no `xattr` command, unlike a first install.
+
+What each platform gets:
+
+| Platform | Asset | What happens |
+| --- | --- | --- |
+| macOS | the `.dmg` matching your architecture | mounts; drag the new version over the old one |
+| Windows | the NSIS `Setup` exe, never the portable one | the installer upgrades in place |
+| Linux | the `.AppImage`, else the `.deb` | revealed in your file manager |
+
+An Intel Mac is offered nothing rather than an arm64 dmg, because installing
+that only produces *"bad CPU type in executable"*.
+
+The check reads one public GitHub endpoint and sends nothing about you. The repo
+it looks at is `RELEASE_REPO` in `src/main/config.ts`.
 
 ## Packaging
 

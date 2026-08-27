@@ -835,3 +835,17 @@ legend {
 .login-alt a:hover {
   color: var(--accent);
 }
+
+/* ---------- update badge ---------- */
+
+.update-badge {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.update-badge:hover {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: var(--accent);
+}

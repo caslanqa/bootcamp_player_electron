@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron'
+import { BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import type {
@@ -10,11 +10,13 @@ import type {
   PrepareResult,
   ProgressEntry,
   Settings,
-  SubtitleTrack
+  SubtitleTrack,
+  UpdateInfo
 } from '@shared/types'
 import { subtitleLabelFor } from '@shared/media'
 import { DRIVE_SOURCE_ID, driveRoot, GDRIVE } from './config'
 import type { DriveAdmin } from './drive-admin'
+import type { Updater } from './updater'
 import type { GDriveAuth } from './auth/gdrive-oauth'
 import type { MediaPreparer } from './media/prepare'
 import type { ProviderRegistry } from './providers/registry'
@@ -30,6 +32,7 @@ export interface AppContext {
   preparer: MediaPreparer
   auth: GDriveAuth
   driveAdmin: DriveAdmin
+  updater: Updater
   window(): BrowserWindow | null
 }
 
@@ -263,6 +266,36 @@ export function registerIpc(ctx: AppContext): void {
     await ctx.auth.signIn({ manage: true, remember: true })
     ownerEmail = undefined
     return adminStatus()
+  })
+
+  // Remembered between check and download so the renderer never has to carry
+  // an asset URL back and forth.
+  let pending: UpdateInfo | null = null
+
+  handle('update:check', async (): Promise<UpdateInfo> => {
+    pending = await ctx.updater.check()
+    return pending
+  })
+
+  handle('update:download', async () => {
+    const asset = pending?.asset
+    if (!asset) throw new Error('Nothing to download — check for an update first')
+    const path = await ctx.updater.download(asset, (p) =>
+      ctx.window()?.webContents.send('update:progress', p)
+    )
+    return { path, hint: ctx.updater.installHint() }
+  })
+
+  handle('update:install', async () => {
+    const asset = pending?.asset
+    if (!asset) throw new Error('Nothing to install — download an update first')
+    const path = await ctx.updater.download(asset, () => undefined)
+
+    // An AppImage or .deb cannot install itself; show it instead of opening it.
+    if (process.platform === 'linux') shell.showItemInFolder(path)
+    else await shell.openPath(path)
+
+    return { hint: ctx.updater.installHint() }
   })
 
   handle('win:setMini', (on: boolean) => {

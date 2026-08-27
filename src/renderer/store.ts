@@ -8,7 +8,9 @@ import type {
   PrepareProgress,
   ProgressEntry,
   Settings,
-  SubtitleTrack
+  SubtitleTrack,
+  UpdateInfo,
+  UpdateProgress
 } from '@shared/types'
 import { flatten, neighbourMedia, nextCollapsedFolder, ROOT_KEY, type TreeMap } from './lib/tree'
 
@@ -36,6 +38,9 @@ interface AppState {
   driveStatus: GDriveStatus | null
   /** Set when the user chooses a local folder over signing in. */
   loginSkipped: boolean
+  update: UpdateInfo | null
+  updateProgress: UpdateProgress | null
+  updateHint: string | null
 
   init(): Promise<void>
   patchSettings(patch: Partial<Settings>): Promise<void>
@@ -44,6 +49,9 @@ interface AppState {
   selectSource(id: string): Promise<void>
   reloadSources(): Promise<void>
   refreshDriveStatus(): Promise<void>
+  checkForUpdate(): Promise<void>
+  downloadUpdate(): Promise<void>
+  installUpdate(): Promise<void>
   signInWithGoogle(remember: boolean): Promise<void>
   signOutOfGoogle(): Promise<void>
   skipLogin(): void
@@ -96,6 +104,9 @@ export const useStore = create<AppState>((set, get) => {
     error: null,
     driveStatus: null,
     loginSkipped: false,
+    update: null,
+    updateProgress: null,
+    updateHint: null,
 
     async init() {
       const [settings, driveStatus] = await Promise.all([
@@ -103,6 +114,7 @@ export const useStore = create<AppState>((set, get) => {
         window.api.gdrive.status()
       ])
       set({ settings, driveStatus, ready: true })
+      window.api.update.onProgress((p) => set({ updateProgress: p }))
       window.api.media.onPrepareProgress((p) => {
         set({ preparing: p.done && !p.error ? null : p })
         if (p.error) get().fail(p.error)
@@ -128,6 +140,30 @@ export const useStore = create<AppState>((set, get) => {
       const wasActive = get().settings.activeSourceId === id
       set({ settings, ...(wasActive ? { tree: {}, expanded: {}, current: null } : {}) })
       if (wasActive && settings.activeSourceId) await get().loadChildren()
+    },
+
+    /** Silent by design: a failed check is reported in-place, never as an alert. */
+    async checkForUpdate() {
+      set({ update: await window.api.update.check() })
+    },
+
+    async downloadUpdate() {
+      set({ updateProgress: null, updateHint: null })
+      try {
+        const { hint } = await window.api.update.download()
+        set({ updateHint: hint })
+      } catch (err) {
+        get().fail((err as Error).message)
+      }
+    },
+
+    async installUpdate() {
+      try {
+        const { hint } = await window.api.update.install()
+        set({ updateHint: hint })
+      } catch (err) {
+        get().fail((err as Error).message)
+      }
     },
 
     async refreshDriveStatus() {

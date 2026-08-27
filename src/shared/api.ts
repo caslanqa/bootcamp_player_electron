@@ -8,7 +8,9 @@ import type {
   PrepareProgress,
   PrepareResult,
   ProgressEntry,
-  Settings
+  Settings,
+  UpdateInfo,
+  UpdateProgress
 } from './types'
 
 /** The single surface the renderer is allowed to touch. Mirrored by the preload bridge. */
@@ -62,6 +64,15 @@ export interface Api {
     revoke(permissionId: string): Promise<AccessEntry[]>
     /** Re-run consent asking for Drive write access. */
     elevate(): Promise<AdminStatus>
+  }
+  update: {
+    /** Never rejects for offline or rate-limited; see UpdateInfo.error. */
+    check(): Promise<UpdateInfo>
+    /** Downloads the installer for this machine and returns its path. */
+    download(): Promise<{ path: string; hint: string }>
+    /** Hands the downloaded file to the OS installer. */
+    install(): Promise<{ hint: string }>
+    onProgress(cb: (p: UpdateProgress) => void): () => void
   }
   win: {
     /** Shrinks the OS window and pins it on top. HTML fullscreen is renderer-side. */

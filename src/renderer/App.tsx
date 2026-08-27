@@ -15,6 +15,8 @@ export function App(): React.JSX.Element {
   const loginSkipped = useStore((s) => s.loginSkipped)
   const skipLogin = useStore((s) => s.skipLogin)
   const dismissError = useStore((s) => s.dismissError)
+  const update = useStore((s) => s.update)
+  const checkForUpdate = useStore((s) => s.checkForUpdate)
   const init = useStore((s) => s.init)
 
   const [showSidebar, setShowSidebar] = useState(true)
@@ -23,6 +25,14 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     void init()
   }, [init])
+
+  // One quiet check a few seconds in, so a slow or rate-limited GitHub never
+  // delays the window appearing. Failures land in the Updates panel, not a modal.
+  useEffect(() => {
+    if (!ready) return
+    const timer = window.setTimeout(() => void checkForUpdate(), 4000)
+    return () => window.clearTimeout(timer)
+  }, [ready, checkForUpdate])
 
   // 'system' leaves the attribute off so prefers-color-scheme decides.
   useEffect(() => {
@@ -74,6 +84,17 @@ export function App(): React.JSX.Element {
           placeholder="Search loaded lessons…"
         />
         <span className="spacer" />
+        {update?.available ? (
+          <button
+            type="button"
+            className="icon-btn update-badge"
+            data-testid="update-badge"
+            onClick={() => setShowSettings(true)}
+            title={`Version ${update.version} is available`}
+          >
+            ↑ Update to {update.version}
+          </button>
+        ) : null}
         <button
           type="button"
           className="icon-btn"

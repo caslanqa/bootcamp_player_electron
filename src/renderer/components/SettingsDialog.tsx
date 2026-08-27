@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { GDriveStatus, ThemeSetting } from '@shared/types'
 import { useStore } from '../store'
 import { AdminPanel } from './AdminPanel'
+import { UpdatePanel } from './UpdatePanel'
 
 interface Props {
   open: boolean
@@ -203,6 +204,8 @@ export function SettingsDialog({ open, onClose }: Props): React.JSX.Element {
         </fieldset>
 
         <AdminPanel open={open} />
+
+        <UpdatePanel open={open} />
 
         <fieldset>
           <legend>Playback</legend>

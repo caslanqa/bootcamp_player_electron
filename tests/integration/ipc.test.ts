@@ -37,6 +37,10 @@ const authState = {
   email: undefined as string | undefined,
   manage: false
 }
+const updateState = {
+  info: { current: '1.0.0', available: false } as Record<string, unknown>,
+  downloaded: [] as string[]
+}
 const adminState = {
   canRead: true,
   owner: null as string | null,
@@ -72,6 +76,8 @@ beforeEach(async () => {
   authState.signedIn = false
   authState.email = undefined
   authState.manage = false
+  updateState.info = { current: '1.0.0', available: false }
+  updateState.downloaded = []
   adminState.canRead = true
   adminState.owner = null
   adminState.access = []
@@ -128,6 +134,14 @@ beforeEach(async () => {
         adminState.revoked.push(id)
         return adminState.access
       }
+    } as never,
+    updater: {
+      check: async () => updateState.info,
+      download: async (asset: { name: string }) => {
+        updateState.downloaded.push(asset.name)
+        return `/tmp/${asset.name}`
+      },
+      installHint: () => 'drag it into Applications'
     } as never,
     window: () => null
   })
@@ -320,6 +334,46 @@ describe('gdrive channel', () => {
     await call('gdrive:signOut')
     const settings = await call<Settings>('settings:get')
     expect(settings.activeSourceId).toBe(local.id)
+  })
+})
+
+describe('update channel', () => {
+  it('passes the check through', async () => {
+    updateState.info = { current: '1.0.0', available: false }
+    expect(await call('update:check')).toEqual({ current: '1.0.0', available: false })
+  })
+
+  it('refuses to download before a check has found something', async () => {
+    await expect(call('update:download')).rejects.toThrow(/check for an update first/)
+    await expect(call('update:install')).rejects.toThrow(/download an update first/)
+  })
+
+  it('downloads the asset the check remembered', async () => {
+    updateState.info = {
+      current: '1.0.0',
+      available: true,
+      version: '1.1.0',
+      asset: { name: 'BootcampPlayer-1.1.0-arm64.dmg', url: 'https://x/y', size: 10 }
+    }
+    await call('update:check')
+
+    const result = await call<{ path: string; hint: string }>('update:download')
+    expect(updateState.downloaded).toEqual(['BootcampPlayer-1.1.0-arm64.dmg'])
+    expect(result.path).toContain('BootcampPlayer-1.1.0-arm64.dmg')
+    expect(result.hint).toBe('drag it into Applications')
+  })
+
+  it('does not remember an asset from a check that found nothing', async () => {
+    updateState.info = {
+      current: '1.0.0',
+      available: true,
+      version: '1.1.0',
+      asset: { name: 'a.dmg', url: 'https://x/y', size: 1 }
+    }
+    await call('update:check')
+    updateState.info = { current: '1.0.0', available: false }
+    await call('update:check')
+    await expect(call('update:download')).rejects.toThrow(/check for an update first/)
   })
 })
 

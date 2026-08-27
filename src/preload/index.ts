@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Api } from '@shared/api'
-import type { PrepareProgress } from '@shared/types'
+import type { PrepareProgress, UpdateProgress } from '@shared/types'
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
   ipcRenderer.invoke(channel, ...args) as Promise<T>
@@ -52,6 +52,16 @@ const api: Api = {
     grant: (email) => invoke('admin:grant', email),
     revoke: (permissionId) => invoke('admin:revoke', permissionId),
     elevate: () => invoke('admin:elevate')
+  },
+  update: {
+    check: () => invoke('update:check'),
+    download: () => invoke('update:download'),
+    install: () => invoke('update:install'),
+    onProgress: (cb) => {
+      const listener = (_e: unknown, p: UpdateProgress): void => cb(p)
+      ipcRenderer.on('update:progress', listener)
+      return () => ipcRenderer.off('update:progress', listener)
+    }
   },
   win: {
     setMini: (on) => invoke('win:setMini', on)

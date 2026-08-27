@@ -73,3 +73,23 @@ test('keyboard shortcuts are documented in Settings', async () => {
   await expect(page.getByText('Picture in picture')).toBeVisible()
   await page.getByTestId('close-settings').click()
 })
+
+test('the updates panel reports the running version', async () => {
+  const { page } = session
+  await page.getByTestId('open-settings').click()
+
+  await expect(page.getByTestId('update-panel')).toBeVisible()
+  await expect(page.getByTestId('current-version')).toContainText(/Version \d+\.\d+\.\d+/)
+  await expect(page.getByTestId('check-update')).toBeEnabled()
+
+  // The real check runs against GitHub, so only assert that it resolves to one
+  // of the three outcomes rather than to a spinner that never ends.
+  await expect(
+    page
+      .getByTestId('update-none')
+      .or(page.getByTestId('update-available'))
+      .or(page.getByTestId('update-error'))
+  ).toBeVisible({ timeout: 20_000 })
+
+  await page.getByTestId('close-settings').click()
+})

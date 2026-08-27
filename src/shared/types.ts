@@ -107,3 +107,31 @@ export interface AdminStatus {
   /** Drive write scope granted, so grant/revoke can actually be called. */
   canManage: boolean
 }
+
+export interface ReleaseAsset {
+  name: string
+  url: string
+  size: number
+}
+
+export interface UpdateInfo {
+  /** The running version. */
+  current: string
+  available: boolean
+  version?: string
+  tag?: string
+  notes?: string
+  releaseUrl?: string
+  /** The installer for this platform and architecture, when the release has one. */
+  asset?: ReleaseAsset
+  /** Set when the check itself failed — offline, rate-limited, no releases yet. */
+  error?: string
+}
+
+export interface UpdateProgress {
+  received: number
+  total: number
+  /** 0..100, -1 when the size is unknown. */
+  percent: number
+  done: boolean
+}

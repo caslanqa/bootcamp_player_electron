@@ -2,12 +2,13 @@ import { app, BrowserWindow, Menu, nativeTheme, safeStorage, shell } from 'elect
 import { join } from 'node:path'
 import type { Settings } from '@shared/types'
 import { GDriveAuth } from './auth/gdrive-oauth'
-import { driveRoot, GDRIVE } from './config'
+import { driveRoot, GDRIVE, RELEASE_REPO } from './config'
 import { DriveAdmin } from './drive-admin'
 import { registerIpc, syncDriveSource, type AppContext } from './ipc'
 import { MediaPreparer } from './media/prepare'
 import { ProviderRegistry } from './providers/registry'
 import { StreamServer } from './server'
+import { Updater } from './updater'
 import { DEFAULT_LIBRARY, DEFAULT_SETTINGS, JsonStore, type LibraryData } from './store'
 
 /** E2E runs point this at a throwaway profile so tests never touch the real one. */
@@ -158,6 +159,11 @@ async function boot(): Promise<void> {
     preparer,
     auth,
     driveAdmin: new DriveAdmin(driveRoot(), (force) => auth.getAccessToken(force)),
+    updater: new Updater({
+      repo: RELEASE_REPO,
+      currentVersion: app.getVersion(),
+      cacheDir: join(userData, 'updates')
+    }),
     window: () => mainWindow
   }
   registerIpc(context)
