@@ -38,6 +38,7 @@ interface AppState {
   addSource(input: Omit<DataSource, 'id'>): Promise<void>
   removeSource(id: string): Promise<void>
   selectSource(id: string): Promise<void>
+  reloadSources(): Promise<void>
   loadChildren(parentId?: string): Promise<void>
   toggleFolder(node: MediaNode): Promise<void>
   play(node: MediaNode): Promise<void>
@@ -58,8 +59,7 @@ const EMPTY_SETTINGS: Settings = {
   rate: 1,
   autoplayNext: true,
   subtitlesEnabled: true,
-  watchedRatio: 0.92,
-  gdrive: { clientId: '', clientSecret: '' }
+  watchedRatio: 0.92
 }
 
 /** Progress is written at most this often while playing. */
@@ -115,6 +115,13 @@ export const useStore = create<AppState>((set, get) => {
       const wasActive = get().settings.activeSourceId === id
       set({ settings, ...(wasActive ? { tree: {}, expanded: {}, current: null } : {}) })
       if (wasActive && settings.activeSourceId) await get().loadChildren()
+    },
+
+    /** Settings changed in main (Drive sign-in/out adds or drops the fixed source). */
+    async reloadSources() {
+      const settings = await window.api.settings.get()
+      set({ settings, tree: {}, expanded: {}, current: null, progress: {}, query: '' })
+      if (settings.activeSourceId) await get().loadChildren()
     },
 
     async selectSource(id) {

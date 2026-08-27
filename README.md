@@ -24,6 +24,8 @@ macOS · Windows · Linux — Electron 44 · React 19 · TypeScript
 - [Data sources](#data-sources)
   - [Local folder](#local-folder)
   - [Google Drive](#google-drive)
+    - [The client secret](#the-client-secret)
+    - [Who can sign in](#who-can-sign-in)
 - [Keyboard](#keyboard)
 - [How it works](#how-it-works)
   - [Playback pipeline](#playback-pipeline)
@@ -58,7 +60,7 @@ Successor to `BootcampPlayer_JavaFX_Full`. Same idea, the gaps closed:
 | Progress | none | resume position, watched marks, `done/total` per folder |
 | Subtitles | none | `.srt`/`.vtt` sidecars, auto-detected, converted to WebVTT |
 | Ordering | `10 Lesson` before `2 Lesson` | natural sort, folders first |
-| Tests | none | 158 unit + integration, 16 end-to-end |
+| Tests | none | 180 unit + integration, 16 end-to-end |
 | Releases | build by hand | conventional commits → version → tag → GitHub Release |
 
 ## Features
@@ -123,22 +125,81 @@ cannot be used to read the rest of your disk.
 
 ### Google Drive
 
-Drive needs **your own** OAuth client — a shipped client ID would be a shared
-secret and would rate-limit every user together.
+Students never see a credentials form. The course folder is the same for
+everyone, so the client ID and folder ID are compiled into the build and a
+student only clicks **Sign in with Google**.
 
-1. [Google Cloud Console](https://console.cloud.google.com/) → new project →
-   enable the **Google Drive API**.
-2. **Credentials → Create credentials → OAuth client ID → Desktop app**.
-3. Paste the client ID (and secret, if one is issued) into **Settings → Google
-   Drive**, hit **Save credentials**, then **Sign in with Google**.
-4. Add a source with the folder ID from its Drive URL
-   (`drive.google.com/drive/folders/<id>`), or leave `root` for My Drive.
+`src/main/config.ts` holds the client ID, the course folder and an optional
+roster. Edit it and rebuild:
 
-Scope requested: `drive.readonly` — read-only, nothing else. The refresh token is
-encrypted with Electron `safeStorage` (OS keychain). Where no keychain exists, it
-is kept in memory for that session only and never written to disk. Sign-in runs
-in your real browser via PKCE + loopback redirect; the app never sees your
-password.
+```ts
+export const GDRIVE = {
+  clientId: '…apps.googleusercontent.com',
+  folderId: '1S_bC1BqGhFSuhktVhi8yXlOb03gEpxZf',   // a full Drive URL works too
+  sourceName: 'Bootcamp course',
+  allowedEmails: []                                // see "Who can sign in"
+}
+```
+
+A desktop-app client ID is **not** a secret. Google documents installed apps as
+unable to keep one confidential, which is exactly why this flow uses PKCE —
+`gcloud`, `rclone` and `gh` all ship theirs the same way. `folderId` accepts
+either a bare id or a pasted `drive.google.com/drive/u/1/folders/<id>?usp=…` URL;
+sub-folders under it are walked lazily, exactly like a local source.
+
+To create the client: [Google Cloud Console](https://console.cloud.google.com/) →
+new project → enable the **Google Drive API** → **Credentials → Create
+credentials → OAuth client ID → Desktop app**.
+
+#### The client secret
+
+The secret is **not** in this file, because this repository is public: a
+committed `GOCSPX-…` string trips GitHub secret scanning, which notifies Google,
+which can disable the credential and break every install. It is injected at
+build time instead.
+
+Locally, put it in a gitignored `.env`:
+
+```bash
+echo 'GOOGLE_CLIENT_SECRET=GOCSPX-…' > .env
+npm run pack:mac
+```
+
+In CI, add `GOOGLE_CLIENT_SECRET` under **Settings → Secrets and variables →
+Actions**; `release.yml` passes it to the packaging step. A build without it
+prints `[build] GOOGLE_CLIENT_SECRET is not set` and produces an app whose Drive
+sign-in will fail — the rest of the app, including local folders, still works.
+
+#### Who can sign in
+
+The scope is `drive.readonly`, which Google classifies as a **restricted** scope.
+That decides what your consent screen can be, and it is also the access gate:
+
+| Consent screen | Who gets in | Cost |
+| --- | --- | --- |
+| **Internal** (needs a Google Workspace domain) | anyone in your organisation | nothing — no verification, tokens do not expire |
+| **External → Testing** | only accounts you add as *test users*, up to 100 | nothing, but refresh tokens die after **7 days**, so students re-login weekly |
+| **External → Production** | anyone | restricted-scope verification **plus an annual CASA security assessment** |
+
+For a closed cohort, *Internal* is the clean answer and the test-user list is the
+practical one. Either way the real access control is **Drive's own sharing** —
+share the course folder with exactly those accounts and Google turns everyone
+else away before the app ever sees a token.
+
+`allowedEmails` in the config is a convenience on top: someone outside the list
+gets a clear "not on the course roster" message instead of an empty playlist. It
+is **not** security — the list ships inside the app and a desktop app can be
+patched.
+
+#### What the app does with the grant
+
+Read-only, nothing else. Sign-in opens Google's consent screen in your real
+browser via PKCE with a loopback redirect, so the app never sees your password.
+The refresh token is encrypted with Electron `safeStorage` (OS keychain); where
+no keychain exists it stays in memory for that session and never reaches disk.
+
+After sign-in the course folder appears in the source list on its own. Its source
+id is fixed, so signing out and back in keeps every watched mark and bookmark.
 
 ## Keyboard
 
@@ -506,5 +567,8 @@ this repo, it needs its own installation.
 - Search covers loaded folders only — expand a folder to include it.
 - Drive access is read-only, and Google Docs-native files are not media, so they
   are filtered out of playlists.
+- With an *External → Testing* consent screen, Google expires Drive refresh
+  tokens after 7 days, so students have to sign in again weekly. An *Internal*
+  consent screen on a Workspace domain has no such limit.
 - The prebuilt macOS installer is Apple Silicon only. Intel Macs need a build
   produced on an Intel host, so that the bundled ffmpeg matches the architecture.

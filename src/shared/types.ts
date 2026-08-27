@@ -39,7 +39,6 @@ export interface Settings {
   subtitlesEnabled: boolean
   /** Seconds of playback after which an item counts as watched (as a ratio of duration). */
   watchedRatio: number
-  gdrive: GDriveCredentials
 }
 
 export interface ProgressEntry {

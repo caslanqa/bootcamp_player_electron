@@ -25,15 +25,12 @@ export function SettingsDialog({ open, onClose }: Props): React.JSX.Element {
   const settings = useStore((s) => s.settings)
   const patchSettings = useStore((s) => s.patchSettings)
   const addSource = useStore((s) => s.addSource)
+  const reloadSources = useStore((s) => s.reloadSources)
   const removeSource = useStore((s) => s.removeSource)
   const fail = useStore((s) => s.fail)
 
   const [localPath, setLocalPath] = useState('')
   const [localName, setLocalName] = useState('')
-  const [driveFolder, setDriveFolder] = useState('root')
-  const [driveName, setDriveName] = useState('')
-  const [clientId, setClientId] = useState(settings.gdrive.clientId)
-  const [clientSecret, setClientSecret] = useState(settings.gdrive.clientSecret)
   const [drive, setDrive] = useState<GDriveStatus>({ configured: false, signedIn: false })
   const [busy, setBusy] = useState(false)
 
@@ -46,10 +43,8 @@ export function SettingsDialog({ open, onClose }: Props): React.JSX.Element {
 
   useEffect(() => {
     if (!open) return
-    setClientId(settings.gdrive.clientId)
-    setClientSecret(settings.gdrive.clientSecret)
     void window.api.gdrive.status().then(setDrive)
-  }, [open, settings.gdrive])
+  }, [open])
 
   const run = async (fn: () => Promise<void>): Promise<void> => {
     setBusy(true)
@@ -148,100 +143,60 @@ export function SettingsDialog({ open, onClose }: Props): React.JSX.Element {
 
         <fieldset>
           <legend>Google Drive</legend>
-          <p className="hint">
-            Create an OAuth <em>Desktop app</em> client in Google Cloud Console with the Drive API
-            enabled, then paste its client ID here. The app requests read-only Drive access and
-            keeps the refresh token in your OS keychain.
-          </p>
-          <div className="field">
-            <label htmlFor="client-id">OAuth client ID</label>
-            <input
-              id="client-id"
-              value={clientId}
-              onChange={(e) => setClientId(e.currentTarget.value)}
-              placeholder="xxxxx.apps.googleusercontent.com"
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="client-secret">OAuth client secret (if your client has one)</label>
-            <input
-              id="client-secret"
-              type="password"
-              value={clientSecret}
-              onChange={(e) => setClientSecret(e.currentTarget.value)}
-            />
-          </div>
-          <div className="inline">
-            <button
-              type="button"
-              className="btn"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  await patchSettings({ gdrive: { clientId, clientSecret } })
-                  setDrive(await window.api.gdrive.status())
-                })
-              }
-            >
-              Save credentials
-            </button>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={busy || !drive.configured}
-              onClick={() => void run(async () => setDrive(await window.api.gdrive.signIn()))}
-            >
-              {drive.signedIn ? 'Re-authorize' : 'Sign in with Google'}
-            </button>
-            {drive.signedIn ? (
+          {!drive.configured ? (
+            <p className="hint">
+              This build has no Google client ID compiled in, so Drive sign-in is unavailable.
+              See <strong>Google Drive</strong> in the README.
+            </p>
+          ) : drive.signedIn ? (
+            <div className="inline">
+              <span data-testid="drive-status">
+                Signed in{drive.email ? ` as ${drive.email}` : ''} — the course folder is in the
+                source list.
+              </span>
               <button
                 type="button"
                 className="btn danger"
+                data-testid="drive-sign-out"
                 disabled={busy}
-                onClick={() => void run(async () => setDrive(await window.api.gdrive.signOut()))}
-              >
-                Sign out
-              </button>
-            ) : null}
-            <span className="hint">
-              {drive.signedIn ? `Connected${drive.email ? ` as ${drive.email}` : ''}` : 'Not connected'}
-            </span>
-          </div>
-
-          <div className="field">
-            <label htmlFor="drive-folder">Drive folder ID (or “root”)</label>
-            <div className="inline">
-              <input
-                id="drive-folder"
-                value={driveFolder}
-                onChange={(e) => setDriveFolder(e.currentTarget.value)}
-                style={{ flex: 1 }}
-              />
-              <input
-                aria-label="Drive source name"
-                value={driveName}
-                onChange={(e) => setDriveName(e.currentTarget.value)}
-                placeholder="Name (optional)"
-              />
-              <button
-                type="button"
-                className="btn primary"
-                disabled={busy || !drive.signedIn}
                 onClick={() =>
                   void run(async () => {
-                    await addSource({ name: driveName, type: 'gdrive', root: driveFolder.trim() })
-                    setDriveName('')
+                    setDrive(await window.api.gdrive.signOut())
+                    await reloadSources()
                   })
                 }
               >
-                Add Drive source
+                Sign out
               </button>
             </div>
-            <p className="hint">
-              The folder ID is the last path segment of its Drive URL:
-              drive.google.com/drive/folders/<strong>&lt;id&gt;</strong>
-            </p>
-          </div>
+          ) : (
+            <>
+              <p className="hint">
+                Sign in with the Google account the course folder was shared with. The app asks
+                for read-only Drive access, opens the consent screen in your own browser, and
+                keeps the refresh token in your OS keychain — never your password.
+              </p>
+              <div className="inline">
+                <button
+                  type="button"
+                  className="btn primary"
+                  data-testid="drive-sign-in"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      setDrive(await window.api.gdrive.signIn())
+                      await reloadSources()
+                    })
+                  }
+                >
+                  Sign in with Google
+                </button>
+                <span className="hint" data-testid="drive-status">
+                  Not connected
+                </span>
+              </div>
+            </>
+          )}
         </fieldset>
 
         <fieldset>

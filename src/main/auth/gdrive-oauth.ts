@@ -15,6 +15,8 @@ export interface OAuthDeps {
   encrypt(plain: string): string
   decrypt(cipher: string): string
   getCredentials(): GDriveCredentials
+  /** Roster check applied to the signed-in address; see config.isOnRoster. */
+  isOnRoster(email: string | null): boolean
   loadToken(): { token: string | null; email: string | null }
   saveToken(token: string | null, email: string | null): void
   fetchImpl?: typeof fetch
@@ -92,7 +94,9 @@ export class GDriveAuth {
 
   async signIn(): Promise<GDriveStatus> {
     const { clientId, clientSecret } = this.deps.getCredentials()
-    if (!clientId.trim()) throw new Error('Set a Google OAuth client ID in Settings first')
+    if (!clientId.trim()) {
+      throw new Error('This build has no Google client ID — see src/main/config.ts')
+    }
 
     const verifier = base64url(randomBytes(48))
     const challenge = base64url(createHash('sha256').update(verifier).digest())
@@ -137,6 +141,15 @@ export class GDriveAuth {
       this.accessToken = json.access_token
       this.expiresAt = Date.now() + (json.expires_in - 60) * 1000
       const email = await this.fetchEmail(json.access_token)
+      if (!this.deps.isOnRoster(email)) {
+        // Hand the grant back rather than sitting on a token we will not use.
+        this.accessToken = null
+        this.expiresAt = 0
+        await this.revoke(json.refresh_token)
+        throw new Error(
+          `${email ?? 'That Google account'} is not on the course roster. Sign in with the account the course folder was shared with.`
+        )
+      }
       this.deps.saveToken(this.deps.encrypt(json.refresh_token), email)
       return this.status()
     } finally {
@@ -149,13 +162,15 @@ export class GDriveAuth {
     this.accessToken = null
     this.expiresAt = 0
     this.deps.saveToken(null, null)
-    if (refresh) {
-      // Best effort: local state is already cleared either way.
-      await this.fetchImpl(`${REVOKE_URL}?token=${encodeURIComponent(refresh)}`, {
-        method: 'POST'
-      }).catch(() => undefined)
-    }
+    if (refresh) await this.revoke(refresh)
     return this.status()
+  }
+
+  /** Best effort — local state is cleared regardless of what Google answers. */
+  private async revoke(token: string): Promise<void> {
+    await this.fetchImpl(`${REVOKE_URL}?token=${encodeURIComponent(token)}`, {
+      method: 'POST'
+    }).catch(() => undefined)
   }
 
   /** drive.readonly is enough to read the account label off /about. */

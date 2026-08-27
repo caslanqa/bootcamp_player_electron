@@ -65,8 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rate: 1,
   autoplayNext: true,
   subtitlesEnabled: true,
-  watchedRatio: 0.92,
-  gdrive: { clientId: '', clientSecret: '' }
+  watchedRatio: 0.92
 }
 
 export interface LibraryData {

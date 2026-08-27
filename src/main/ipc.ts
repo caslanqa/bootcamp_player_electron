@@ -11,6 +11,7 @@ import type {
   SubtitleTrack
 } from '@shared/types'
 import { subtitleLabelFor } from '@shared/media'
+import { DRIVE_SOURCE_ID, driveRoot, GDRIVE } from './config'
 import type { GDriveAuth } from './auth/gdrive-oauth'
 import type { MediaPreparer } from './media/prepare'
 import type { ProviderRegistry } from './providers/registry'
@@ -179,8 +180,30 @@ export function registerIpc(ctx: AppContext): void {
   })
 
   handle('gdrive:status', () => ctx.auth.status())
-  handle('gdrive:signIn', () => ctx.auth.signIn())
-  handle('gdrive:signOut', () => ctx.auth.signOut())
+
+  handle('gdrive:signIn', async () => {
+    const status = await ctx.auth.signIn()
+    // The folder is fixed, so the source appears on its own — no form to fill in.
+    syncDriveSource(ctx)
+    return status
+  })
+
+  handle('gdrive:signOut', async () => {
+    const status = await ctx.auth.signOut()
+    // Drop the source, keep the progress: it is keyed by DRIVE_SOURCE_ID, which
+    // never changes, so signing back in restores every watched mark.
+    const current = ctx.settings.get()
+    const sources = current.sources.filter((s) => s.id !== DRIVE_SOURCE_ID)
+    ctx.settings.set({
+      sources,
+      activeSourceId:
+        current.activeSourceId === DRIVE_SOURCE_ID
+          ? (sources[0]?.id ?? null)
+          : current.activeSourceId
+    })
+    ctx.registry.clear()
+    return status
+  })
 
   handle('win:setMini', (on: boolean) => {
     const win = ctx.window()
@@ -202,4 +225,28 @@ function defaultName(input: Omit<DataSource, 'id'>): string {
   if (input.type === 'gdrive') return 'Google Drive'
   const parts = input.root.split(/[\\/]/).filter(Boolean)
   return parts[parts.length - 1] ?? 'Local folder'
+}
+
+/**
+ * Create or refresh the one fixed Drive source and make it active. Called after
+ * a successful sign-in and at startup, so a folder id changed in a new build
+ * reaches installs that are already signed in.
+ */
+export function syncDriveSource(ctx: AppContext): DataSource {
+  const source: DataSource = {
+    id: DRIVE_SOURCE_ID,
+    name: GDRIVE.sourceName,
+    type: 'gdrive',
+    root: driveRoot()
+  }
+  const current = ctx.settings.get()
+  const exists = current.sources.some((s) => s.id === DRIVE_SOURCE_ID)
+  ctx.settings.set({
+    sources: exists
+      ? current.sources.map((s) => (s.id === DRIVE_SOURCE_ID ? source : s))
+      : [...current.sources, source],
+    activeSourceId: DRIVE_SOURCE_ID
+  })
+  ctx.registry.clear()
+  return source
 }

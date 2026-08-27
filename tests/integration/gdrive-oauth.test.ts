@@ -19,6 +19,7 @@ function harness(options: {
   autoRedirect?: (url: URL) => Promise<void>
   tokenResponse?: (form: Record<string, string>) => Response
   credentials?: { clientId: string; clientSecret: string }
+  roster?: string[]
 } = {}): Harness {
   const stored = { token: null as string | null, email: null as string | null }
   const tokenCalls: Array<Record<string, string>> = []
@@ -61,6 +62,10 @@ function harness(options: {
       return m[1]
     },
     getCredentials: () => options.credentials ?? { clientId: CLIENT_ID, clientSecret: 'shh' },
+    isOnRoster: (email) =>
+      !options.roster || options.roster.length === 0
+        ? true
+        : options.roster.some((e) => e.toLowerCase() === (email ?? '').toLowerCase()),
     loadToken: () => ({ ...stored }),
     saveToken: (token, email) => {
       stored.token = token
@@ -169,6 +174,19 @@ describe('signIn', () => {
         })
     })
     await expect(h.auth.signIn()).rejects.toThrow(/no refresh token/)
+  })
+
+  it('accepts an account that is on the roster', async () => {
+    const h = harness({ autoRedirect: (url) => redirect(url), roster: ['ME@example.com'] })
+    await expect(h.auth.signIn()).resolves.toMatchObject({ signedIn: true })
+    expect(h.stored.token).toBe('enc(rt-1)')
+  })
+
+  it('refuses an account that is not, and keeps no token', async () => {
+    const h = harness({ autoRedirect: (url) => redirect(url), roster: ['someone@else.com'] })
+    await expect(h.auth.signIn()).rejects.toThrow(/not on the course roster/)
+    expect(h.stored.token).toBeNull()
+    await expect(h.auth.getAccessToken()).rejects.toThrow(/not connected/)
   })
 })
 

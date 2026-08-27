@@ -2,7 +2,8 @@ import { app, BrowserWindow, Menu, nativeTheme, safeStorage, shell } from 'elect
 import { join } from 'node:path'
 import type { Settings } from '@shared/types'
 import { GDriveAuth } from './auth/gdrive-oauth'
-import { registerIpc, type AppContext } from './ipc'
+import { GDRIVE, isOnRoster } from './config'
+import { registerIpc, syncDriveSource, type AppContext } from './ipc'
 import { MediaPreparer } from './media/prepare'
 import { ProviderRegistry } from './providers/registry'
 import { StreamServer } from './server'
@@ -114,7 +115,8 @@ async function boot(): Promise<void> {
       }
       return safeStorage.decryptString(Buffer.from(cipher, 'base64'))
     },
-    getCredentials: () => settings.get().gdrive,
+    getCredentials: () => GDRIVE,
+    isOnRoster,
     loadToken: () => ({
       token: library.get().gdriveToken,
       email: library.get().gdriveEmail
@@ -150,6 +152,9 @@ async function boot(): Promise<void> {
     window: () => mainWindow
   }
   registerIpc(context)
+  // Keeps the fixed course source pointing at whatever this build was compiled
+  // with, so a folder change in a new version reaches existing installs too.
+  if (auth.status().signedIn) syncDriveSource(context)
   buildMenu()
   mainWindow = createWindow()
 }

@@ -29,6 +29,7 @@ const { DEFAULT_LIBRARY, DEFAULT_SETTINGS, JsonStore, libraryKey } = await impor
 )
 const { buildFixtures, ffmpegUsable } = await import('../helpers/fixtures')
 const { ROOT_KEY } = await import('../../src/renderer/lib/tree')
+const { DRIVE_SOURCE_ID, GDRIVE } = await import('../../src/main/config')
 
 const HAS_FFMPEG = await ffmpegUsable()
 
@@ -215,6 +216,55 @@ describe.runIf(HAS_FFMPEG)('media channel', () => {
     await expect(
       call('media:prepare', source.id, join(fixtures.course, 'ghost.mp4'))
     ).rejects.toThrow(/Media not found/)
+  })
+})
+
+describe('gdrive channel', () => {
+  it('sign-in creates the fixed course source and activates it', async () => {
+    const status = await call<{ signedIn: boolean }>('gdrive:signIn')
+    expect(status.signedIn).toBe(true)
+
+    const settings = await call<Settings>('settings:get')
+    const source = settings.sources.find((s) => s.id === DRIVE_SOURCE_ID)
+    expect(source).toMatchObject({
+      id: DRIVE_SOURCE_ID,
+      type: 'gdrive',
+      name: GDRIVE.sourceName,
+      root: GDRIVE.folderId.trim() || 'root'
+    })
+    expect(settings.activeSourceId).toBe(DRIVE_SOURCE_ID)
+  })
+
+  it('signing in twice does not duplicate the source', async () => {
+    await call('gdrive:signIn')
+    await call('gdrive:signIn')
+    const settings = await call<Settings>('settings:get')
+    expect(settings.sources.filter((s) => s.id === DRIVE_SOURCE_ID)).toHaveLength(1)
+  })
+
+  it('sign-out drops the source but keeps its progress', async () => {
+    await call('gdrive:signIn')
+    await call('progress:set', DRIVE_SOURCE_ID, 'lesson-1', 30, 100)
+
+    await call('gdrive:signOut')
+    const settings = await call<Settings>('settings:get')
+    expect(settings.sources.some((s) => s.id === DRIVE_SOURCE_ID)).toBe(false)
+    expect(settings.activeSourceId).toBeNull()
+
+    // The id is stable, so signing back in restores every watched mark.
+    expect(await call('progress:get', DRIVE_SOURCE_ID, 'lesson-1')).toMatchObject({ position: 30 })
+  })
+
+  it('keeps a local source active when Drive signs out', async () => {
+    const local = await call<DataSource>('sources:add', {
+      name: 'C',
+      type: 'local',
+      root: fixtures.course
+    })
+    await call('gdrive:signIn')
+    await call('gdrive:signOut')
+    const settings = await call<Settings>('settings:get')
+    expect(settings.activeSourceId).toBe(local.id)
   })
 })
 
