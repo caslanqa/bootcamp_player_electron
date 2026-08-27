@@ -175,9 +175,12 @@ npm run pack:mac
 ```
 
 In CI, add `GOOGLE_CLIENT_SECRET` under **Settings → Secrets and variables →
-Actions**; `release.yml` passes it to the packaging step. A build without it
-prints `[build] GOOGLE_CLIENT_SECRET is not set` and produces an app whose Drive
-sign-in will fail — the rest of the app, including local folders, still works.
+Actions**; `release.yml` passes it to the packaging step.
+
+A build without it prints `[build] GOOGLE_CLIENT_SECRET is not set` and produces
+an app that says so on its own login screen rather than failing at the last step
+of the OAuth exchange. Local folders keep working either way. **Add the secret
+before cutting a release**, or the installers will ship unable to sign in.
 
 #### Who can sign in
 
@@ -328,81 +331,53 @@ ls release/
 
 ### macOS
 
-The `.dmg` arrives quarantined because it was downloaded, and Gatekeeper blocks
-quarantined apps that are not notarised. Copy it out, then clear the flag:
+Drag the app out of the `.dmg` into **Applications**, then clear the flag macOS
+put on it because it was downloaded:
 
 ```bash
-# Mount, copy to /Applications, unmount
+xattr -d com.apple.quarantine "/Applications/Bootcamp Player.app"
+```
+
+That is the whole ceremony. Without it Gatekeeper says *"can’t be opened because
+Apple cannot check it for malicious software"* — it wants notarisation, which
+these builds do not have.
+
+All from the terminal, if you prefer:
+
+```bash
 VOL=$(hdiutil attach release/BootcampPlayer-1.0.0-arm64.dmg -nobrowse | grep -o '/Volumes/.*')
 cp -R "$VOL/Bootcamp Player.app" /Applications/
 hdiutil detach "$VOL"
-
-# Clear the download quarantine — without this you get
-# "can't be opened because Apple cannot check it for malicious software"
-xattr -dr com.apple.quarantine "/Applications/Bootcamp Player.app"
-
+xattr -d com.apple.quarantine "/Applications/Bootcamp Player.app"
 open "/Applications/Bootcamp Player.app"
 ```
-
-Confirm the bundle is intact at any point:
-
-```bash
-codesign --verify --deep --strict "/Applications/Bootcamp Player.app" && echo "signature ok"
-```
-
-`spctl -a` will still report *rejected* — that checks notarisation, which an
-ad-hoc signature cannot satisfy. It is not a sign of a broken build.
 
 The prebuilt dmg is **Apple Silicon only** — see [Known limits](#known-limits).
 
 ### If macOS will not open the app
 
-Start by asking macOS what is actually wrong instead of reading the modal — run
-the binary inside the bundle and it prints the real error:
+Run the binary inside the bundle and it prints the real error instead of a modal:
 
 ```bash
 "/Applications/Bootcamp Player.app/Contents/MacOS/Bootcamp Player"
 ```
 
-| Symptom | Cause | Fix |
-| --- | --- | --- |
-| “cannot be opened because Apple cannot check it for malicious software” | Download quarantine still set | `xattr -dr com.apple.quarantine` |
-| “is damaged and can’t be opened. You should move it to the Trash” | Signature invalidated, or the dmg was truncated | Re-sign ad-hoc (below) |
-| Icon bounces once, then nothing | Runtime crash | Run the binary directly, read the error |
-| “bad CPU type in executable” | arm64 build on an Intel Mac | No prebuilt Intel dmg — build on an Intel host |
+| Symptom | What it means |
+| --- | --- |
+| “Apple cannot check it for malicious software” | The `xattr` command above has not been run |
+| “is damaged and can’t be opened” | The download was truncated — fetch the dmg again |
+| Icon bounces once, then nothing | A runtime crash; the command above shows it |
+| “bad CPU type in executable” | An Intel Mac, and the dmg is Apple Silicon only |
 
-The one-shot repair — clears every download flag and gives the bundle a fresh,
-valid ad-hoc signature:
+On macOS 15 and later, right-click → **Open** no longer works for an app that is
+not notarised. Use the `xattr` command, or launch it once, let it be blocked, and
+approve it in **System Settings → Privacy & Security → Open Anyway**.
 
-```bash
-APP="/Applications/Bootcamp Player.app"
+`spctl -a` reports *rejected* even on a healthy install — it checks notarisation,
+which an ad-hoc signature cannot satisfy. Not a sign of a broken build.
 
-xattr -cr "$APP"                                    # drop quarantine + provenance
-codesign --force --deep --sign - "$APP"             # re-sign ad-hoc
-codesign --verify --deep --strict "$APP" && echo "signature ok"
-open "$APP"
-```
-
-`codesign` ships with the Xcode command line tools; if it is missing, run
-`xcode-select --install` first.
-
-To see the state rather than change it:
-
-```bash
-xattr -l "$APP"                    # is com.apple.quarantine still there?
-codesign -dv "$APP"                # expect Signature=adhoc, Identifier=com.caslanqa.bootcampplayer
-spctl -a -vvv "$APP"               # "rejected" is expected — the build is not notarised
-uname -m                           # must say arm64; the prebuilt dmg is Apple Silicon only
-ls -t ~/Library/Logs/DiagnosticReports | head -5    # most recent crash reports
-```
-
-On macOS 15 and later, right-click → **Open** no longer bypasses Gatekeeper for
-an app that is not notarised. Either use the `xattr` command above, or launch it
-once, let it be blocked, then approve it in **System Settings → Privacy &
-Security → Open Anyway**.
-
-If the app launches but misbehaves, reset its profile — settings, watch progress,
-bookmarks and the transcode cache all live in one directory:
+To reset the app itself — settings, watch progress, bookmarks and the transcode
+cache all live in one directory:
 
 ```bash
 rm -rf "$HOME/Library/Application Support/bootcamp_player_electron"

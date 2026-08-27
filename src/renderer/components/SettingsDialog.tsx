@@ -147,8 +147,9 @@ export function SettingsDialog({ open, onClose }: Props): React.JSX.Element {
           <legend>Google Drive</legend>
           {!drive.configured ? (
             <p className="hint">
-              This build has no Google client ID compiled in, so Drive sign-in is unavailable.
-              See <strong>Google Drive</strong> in the README.
+              This build is missing its Google credentials, so Drive sign-in is unavailable. See
+              <strong> Google Drive</strong> in the README — the client secret is injected at
+              build time from <code>GOOGLE_CLIENT_SECRET</code>.
             </p>
           ) : drive.signedIn ? (
             <div className="inline">

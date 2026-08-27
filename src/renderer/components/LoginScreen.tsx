@@ -72,8 +72,9 @@ export function LoginScreen({ onUseLocalFolder }: Props): React.JSX.Element {
           </>
         ) : (
           <p className="hint" data-testid="login-unconfigured">
-            This build has no Google client ID compiled in, so Drive sign-in is unavailable. You
-            can still play a local folder.
+            This build is missing its Google credentials, so signing in cannot work. Whoever
+            packaged it needs to set <code>GOOGLE_CLIENT_SECRET</code> at build time. A local
+            folder still plays without an account.
           </p>
         )}
 

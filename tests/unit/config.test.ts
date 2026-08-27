@@ -9,20 +9,31 @@ import {
 
 const originalClientId = GDRIVE.clientId
 const originalFolderId = GDRIVE.folderId
+const originalSecret = GDRIVE.clientSecret
 
 afterEach(() => {
   GDRIVE.clientId = originalClientId
   GDRIVE.folderId = originalFolderId
+  GDRIVE.clientSecret = originalSecret
 })
 
 describe('isDriveConfigured', () => {
-  it('is false until a client id is compiled in', () => {
+  it('needs a client id', () => {
+    GDRIVE.clientSecret = 'GOCSPX-x'
     GDRIVE.clientId = ''
     expect(isDriveConfigured()).toBe(false)
     GDRIVE.clientId = '   '
     expect(isDriveConfigured()).toBe(false)
     GDRIVE.clientId = 'abc.apps.googleusercontent.com'
     expect(isDriveConfigured()).toBe(true)
+  })
+
+  it('needs the build-time secret too — without it sign-in dies at the last step', () => {
+    GDRIVE.clientId = 'abc.apps.googleusercontent.com'
+    GDRIVE.clientSecret = ''
+    expect(isDriveConfigured()).toBe(false)
+    GDRIVE.clientSecret = '  '
+    expect(isDriveConfigured()).toBe(false)
   })
 })
 
@@ -72,7 +83,6 @@ describe('driveRoot', () => {
 
 describe('shipped credentials', () => {
   it('carries a client id so students never see a form', () => {
-    expect(isDriveConfigured()).toBe(true)
     expect(GDRIVE.clientId).toMatch(/\.apps\.googleusercontent\.com$/)
   })
 

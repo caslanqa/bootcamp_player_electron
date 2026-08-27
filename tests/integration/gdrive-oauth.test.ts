@@ -98,8 +98,13 @@ async function redirect(url: URL, overrides: Record<string, string> = {}): Promi
 
 describe('status', () => {
   it('reports unconfigured with no client id', () => {
-    const h = harness({ credentials: { clientId: '  ', clientSecret: '' } })
+    const h = harness({ credentials: { clientId: '  ', clientSecret: 'shh' } })
     expect(h.auth.status()).toEqual({ configured: false, signedIn: false, email: undefined })
+  })
+
+  it('reports unconfigured when the build-time secret is missing', () => {
+    const h = harness({ credentials: { clientId: CLIENT_ID, clientSecret: '' } })
+    expect(h.auth.status()).toMatchObject({ configured: false })
   })
 
   it('reports configured but signed out before any login', () => {
@@ -112,9 +117,13 @@ describe('signIn', () => {
     vi.restoreAllMocks()
   })
 
-  it('refuses without a client id', async () => {
-    const h = harness({ credentials: { clientId: '', clientSecret: '' } })
-    await expect(h.auth.signIn()).rejects.toThrow(/client ID/)
+  it('refuses without credentials, naming both halves', async () => {
+    await expect(
+      harness({ credentials: { clientId: '', clientSecret: 'shh' } }).auth.signIn()
+    ).rejects.toThrow(/missing its Google credentials/)
+    await expect(
+      harness({ credentials: { clientId: CLIENT_ID, clientSecret: '' } }).auth.signIn()
+    ).rejects.toThrow(/GOOGLE_CLIENT_SECRET/)
   })
 
   it('sends a correct PKCE S256 challenge and read-only scope', async () => {
@@ -200,7 +209,12 @@ describe('getAccessToken', () => {
     const h = harness({
       autoRedirect: (url) => redirect(url),
       tokenResponse: (form) => {
-        if (form.grant_type === 'refresh_token') return new Response('invalid_grant', { status: 400 })
+        if (form.grant_type === 'refresh_token') {
+          return new Response(JSON.stringify({ error: 'invalid_grant' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          })
+        }
         exchanged = true
         return new Response(
           JSON.stringify({ access_token: 'at-1', expires_in: 3600, refresh_token: 'rt-1' }),
@@ -210,7 +224,8 @@ describe('getAccessToken', () => {
     })
     await h.auth.signIn()
     expect(exchanged).toBe(true)
-    await expect(h.auth.getAccessToken(true)).rejects.toThrow(/Token refresh failed/)
+    // The user sees an actionable sentence, not Google's JSON.
+    await expect(h.auth.getAccessToken(true)).rejects.toThrow(/expired before it completed/)
     expect(h.stored.token).toBeNull()
     expect(h.auth.status().signedIn).toBe(false)
   })

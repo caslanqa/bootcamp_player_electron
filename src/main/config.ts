@@ -34,9 +34,15 @@ export const GDRIVE = {
   sourceName: 'Bootcamp course'
 }
 
-/** False when this build has no client ID compiled in — the UI says so plainly. */
+/**
+ * Can this build actually complete a sign-in? Both halves have to be present:
+ * the client ID is committed, but the secret is injected at build time and is
+ * silently empty when GOOGLE_CLIENT_SECRET was not set. Google's token endpoint
+ * requires it for this client, so an empty one means sign-in cannot work — the
+ * UI should say so before anyone clicks.
+ */
 export function isDriveConfigured(): boolean {
-  return GDRIVE.clientId.trim().length > 0
+  return GDRIVE.clientId.trim().length > 0 && GDRIVE.clientSecret.trim().length > 0
 }
 
 /**

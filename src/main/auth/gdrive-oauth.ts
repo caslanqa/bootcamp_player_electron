@@ -39,6 +39,38 @@ export interface OAuthDeps {
   fetchImpl?: typeof fetch
 }
 
+/**
+ * Turn Google's token-endpoint errors into something a user can act on. The raw
+ * body is a JSON blob that means nothing on screen, and the most likely cause by
+ * far — a build packaged without GOOGLE_CLIENT_SECRET — reads as a bare
+ * "invalid_request".
+ */
+export function describeTokenError(status: number, body: string): string {
+  let error = ''
+  let description = ''
+  try {
+    const parsed = JSON.parse(body) as { error?: string; error_description?: string }
+    error = parsed.error ?? ''
+    description = parsed.error_description ?? ''
+  } catch {
+    // Not JSON; fall through to the generic message.
+  }
+
+  if (/client_secret is missing/i.test(description)) {
+    return 'This build was packaged without the Google client secret, so sign-in cannot complete. Rebuild with GOOGLE_CLIENT_SECRET set (a .env file locally, a repository secret in CI).'
+  }
+  if (error === 'invalid_client') {
+    return 'Google rejected this app\u2019s credentials. The client ID or secret is wrong, or the OAuth client was deleted.'
+  }
+  if (error === 'invalid_grant') {
+    return 'That sign-in attempt expired before it completed. Try signing in again.'
+  }
+  if (error === 'access_denied') {
+    return 'Google refused the request. If the consent screen is in Testing mode, this account has to be added as a test user first.'
+  }
+  return `Google refused the sign-in (${status}${error ? ` ${error}` : ''}${description ? `: ${description}` : ''}).`
+}
+
 interface TokenResponse {
   access_token: string
   expires_in: number
@@ -61,10 +93,12 @@ export class GDriveAuth {
   }
 
   status(): GDriveStatus {
-    const { clientId } = this.deps.getCredentials()
+    const { clientId, clientSecret } = this.deps.getCredentials()
     const { token, email } = this.deps.loadToken()
     return {
-      configured: clientId.trim().length > 0,
+      // Both halves, because Google's token endpoint needs the secret too and a
+      // build packaged without it can only fail at the last step.
+      configured: clientId.trim().length > 0 && clientSecret.trim().length > 0,
       signedIn: token !== null,
       email: email ?? undefined
     }
@@ -109,7 +143,7 @@ export class GDriveAuth {
     if (!res.ok) {
       // A dead refresh token can never recover; drop it so the UI asks for a new login.
       this.deps.saveToken(null, null, null)
-      throw new Error(`Token refresh failed: ${res.status} ${await res.text()}`)
+      throw new Error(describeTokenError(res.status, await res.text()))
     }
     const json = (await res.json()) as TokenResponse
     this.accessToken = json.access_token
@@ -121,8 +155,10 @@ export class GDriveAuth {
     const remember = options.remember !== false
     const scopes = options.manage ? [READ_SCOPE, MANAGE_SCOPE] : [READ_SCOPE]
     const { clientId, clientSecret } = this.deps.getCredentials()
-    if (!clientId.trim()) {
-      throw new Error('This build has no Google client ID — see src/main/config.ts')
+    if (!clientId.trim() || !clientSecret.trim()) {
+      throw new Error(
+        'This build is missing its Google credentials. The client ID lives in src/main/config.ts; the secret is injected at build time from GOOGLE_CLIENT_SECRET.'
+      )
     }
 
     const verifier = base64url(randomBytes(48))
@@ -161,7 +197,7 @@ export class GDriveAuth {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body
       })
-      if (!res.ok) throw new Error(`Token exchange failed: ${res.status} ${await res.text()}`)
+      if (!res.ok) throw new Error(describeTokenError(res.status, await res.text()))
       const json = (await res.json()) as TokenResponse
       if (!json.refresh_token) {
         throw new Error('Google returned no refresh token — revoke app access and retry')
