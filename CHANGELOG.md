@@ -6,6 +6,17 @@ All notable changes, generated from [Conventional Commits](https://www.conventio
 by `npm run release`. Do not edit released sections by hand — one bullet per
 commit, so lines run long on purpose.
 
+## [1.2.0](https://github.com/caslanqa/bootcamp_player_electron/compare/v1.1.0...v1.2.0) — 2026-08-27
+
+### Features
+
+- **ui:** check GitHub Releases and install the update ([cd439ef](https://github.com/caslanqa/bootcamp_player_electron/commit/cd439ef496a916d3e48b0892f96ece85732a36b5))
+
+### Fixes
+
+- **build:** inject both Google credentials, unbreak the e2e run ([ef058ab](https://github.com/caslanqa/bootcamp_player_electron/commit/ef058abe2f97223c25b97b22a67f927ef23af2f4))
+- **drive:** explain a missing or rejected Google credential ([ef2710c](https://github.com/caslanqa/bootcamp_player_electron/commit/ef2710c35721e572161de85790617436e547dc76))
+
 ## 1.1.0 — 2026-08-27
 
 ### ⚠ Breaking changes
