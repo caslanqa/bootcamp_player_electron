@@ -82,12 +82,15 @@ describe('driveRoot', () => {
 })
 
 describe('shipped credentials', () => {
-  it('carries a client id so students never see a form', () => {
-    expect(GDRIVE.clientId).toMatch(/\.apps\.googleusercontent\.com$/)
+  // Vitest applies no esbuild `define`, so what these read here is exactly what
+  // is committed. Both must be empty: a committed GOCSPX- string gets scanned
+  // and revoked, and a committed client ID can be lifted to burn our quota.
+  it('keeps both halves out of the repository', () => {
+    expect(GDRIVE.clientId).toBe('')
+    expect(GDRIVE.clientSecret).toBe('')
   })
 
-  it('keeps the client secret out of the repository', () => {
-    // Injected at build time; a committed GOCSPX- string would be scanned and revoked.
-    expect(GDRIVE.clientSecret).not.toMatch(/^GOCSPX-/)
+  it('is therefore unconfigured until a build injects them', () => {
+    expect(isDriveConfigured()).toBe(false)
   })
 })

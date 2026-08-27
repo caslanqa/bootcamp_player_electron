@@ -41,6 +41,13 @@ jobs:
 
       # Electron needs a display; the e2e suite drives the real window.
       - name: E2E
+        env:
+          # The login screen only offers "Sign in with Google" when the build has
+          # both halves of the credential, so the specs need a non-empty secret to
+          # render that branch. Nothing here ever reaches Google: no e2e test
+          # completes a sign-in. The real secret lives in release.yml.
+          GOOGLE_CLIENT_ID: e2e-placeholder.apps.googleusercontent.com
+          GOOGLE_CLIENT_SECRET: e2e-placeholder-never-sent-to-google
         run: xvfb-run --auto-servernum npm run test:e2e
 
       - uses: actions/upload-artifact@v4

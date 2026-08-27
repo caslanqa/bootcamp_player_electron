@@ -7,24 +7,30 @@
  * exactly why the sign-in flow uses PKCE. Shipping it in the binary is what
  * gcloud, rclone and gh all do.
  *
- * The client *secret* is different, not because it is confidential (it is not,
- * for an installed app) but because this repository is public: committing a
- * `GOCSPX-…` string trips GitHub secret scanning, which tells Google, which can
- * disable the credential and break every install. So it is injected at build
- * time instead — see GOOGLE_CLIENT_SECRET in electron.vite.config.ts.
+ * Both halves are injected at build time rather than committed. GitHub secrets
+ * protect the *repository*, not the binary — every installer still carries these
+ * values and they can be extracted in minutes. What it does buy:
+ *
+ *   - a committed `GOCSPX-…` string trips GitHub secret scanning, which tells
+ *     Google, which can disable the credential and break every install
+ *   - a client ID that is not in public git or search results cannot be lifted
+ *     by someone else to burn this project's quota, or to put this app's name on
+ *     their own consent screen
+ *
+ * Set both in a gitignored `.env` locally; CI reads them from repository secrets.
+ * See electron.vite.config.ts.
  */
 
 /** Replaced at build time by electron-vite `define`. */
+declare const __GOOGLE_CLIENT_ID__: string
 declare const __GOOGLE_CLIENT_SECRET__: string
 
+// `typeof` guards because the identifiers only exist once esbuild has
+// substituted them — under vitest they are simply absent.
 export const GDRIVE = {
-  /** OAuth client of type "Desktop app". Public by design. */
-  clientId: '975363724118-onhruo5faruvmjdjudthrb77df76uirj.apps.googleusercontent.com',
+  /** OAuth client of type "Desktop app". */
+  clientId: typeof __GOOGLE_CLIENT_ID__ === 'string' ? __GOOGLE_CLIENT_ID__ : '',
 
-  /**
-   * Build-time injected. `typeof` guard because the identifier only exists once
-   * esbuild has substituted it — under vitest it is simply absent.
-   */
   clientSecret: typeof __GOOGLE_CLIENT_SECRET__ === 'string' ? __GOOGLE_CLIENT_SECRET__ : '',
 
   /** The course root. Sub-folders below it are walked lazily, as with a local source. */

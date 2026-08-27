@@ -26,8 +26,11 @@ test.afterAll(async () => {
 
 test('a first launch asks you to sign in before anything else', async () => {
   const solo = await launch(freshProfile())
-  await expect(solo.page.getByTestId('login-google')).toBeVisible()
-  await expect(solo.page.getByTestId('login-remember')).toBeChecked()
+  // The gate itself, not the sign-in button: whether that button is offered
+  // depends on the credentials this build was packaged with, which login.spec
+  // covers separately.
+  await expect(solo.page.locator('.login')).toBeVisible()
+  await expect(solo.page.getByRole('heading', { name: 'Bootcamp Player' })).toBeVisible()
   // No player behind the gate.
   await expect(solo.page.locator('.topbar')).toHaveCount(0)
 

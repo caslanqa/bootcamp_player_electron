@@ -171,8 +171,9 @@ jobs:
       - name: Package
         if: steps.gate.outputs.run == 'true'
         env:
-          # Repository secret; baked into the bundle at build time so it never
-          # lands in this public repo. Add it under Settings -> Secrets.
+          # Repository secrets; baked into the bundle at build time so they never
+          # land in this public repo. Add both under Settings -> Secrets.
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: ${{ matrix.pack }}
 

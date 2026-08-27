@@ -143,22 +143,21 @@ Students never see a credentials form. The course folder is the same for
 everyone, so the client ID and folder ID are compiled into the build and a
 student only clicks **Sign in with Google**.
 
-`src/main/config.ts` holds the client ID, the course folder and an optional
-roster. Edit it and rebuild:
+`src/main/config.ts` holds the course folder and the source name. The OAuth
+credentials are **not** in it — they are injected at build time:
 
 ```ts
 export const GDRIVE = {
-  clientId: '…apps.googleusercontent.com',
+  clientId: '',      // ← GOOGLE_CLIENT_ID at build time
+  clientSecret: '',  // ← GOOGLE_CLIENT_SECRET at build time
   folderId: '1S_bC1BqGhFSuhktVhi8yXlOb03gEpxZf',   // a full Drive URL works too
   sourceName: 'Bootcamp course'
 }
 ```
 
-A desktop-app client ID is **not** a secret. Google documents installed apps as
-unable to keep one confidential, which is exactly why this flow uses PKCE —
-`gcloud`, `rclone` and `gh` all ship theirs the same way. `folderId` accepts
-either a bare id or a pasted `drive.google.com/drive/u/1/folders/<id>?usp=…` URL;
-sub-folders under it are walked lazily, exactly like a local source.
+`folderId` accepts either a bare id or a pasted
+`drive.google.com/drive/u/1/folders/<id>?usp=…` URL; sub-folders under it are
+walked lazily, exactly like a local source.
 
 To create the client: [Google Cloud Console](https://console.cloud.google.com/) →
 new project → enable the **Google Drive API** → **Credentials → Create
@@ -166,25 +165,32 @@ credentials → OAuth client ID → Desktop app**.
 
 #### The client secret
 
-The secret is **not** in this file, because this repository is public: a
-committed `GOCSPX-…` string trips GitHub secret scanning, which notifies Google,
-which can disable the credential and break every install. It is injected at
-build time instead.
-
-Locally, put it in a gitignored `.env`:
+Both halves stay out of git. Locally, a gitignored `.env`:
 
 ```bash
-echo 'GOOGLE_CLIENT_SECRET=GOCSPX-…' > .env
+printf 'GOOGLE_CLIENT_ID=…apps.googleusercontent.com\nGOOGLE_CLIENT_SECRET=GOCSPX-…\n' > .env
 npm run pack:mac
 ```
 
-In CI, add `GOOGLE_CLIENT_SECRET` under **Settings → Secrets and variables →
-Actions**; `release.yml` passes it to the packaging step.
+In CI, add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` under **Settings →
+Secrets and variables → Actions**; `release.yml` passes both to the packaging
+step.
 
-A build without it prints `[build] GOOGLE_CLIENT_SECRET is not set` and produces
-an app that says so on its own login screen rather than failing at the last step
-of the OAuth exchange. Local folders keep working either way. **Add the secret
-before cutting a release**, or the installers will ship unable to sign in.
+Be clear about what this buys. **GitHub secrets protect the repository, not the
+binary** — every installer still carries both values and they can be extracted in
+minutes. Google says as much: an installed app cannot keep a secret, which is why
+this flow leans on PKCE instead. What keeping them out of public git does prevent:
+
+- a committed `GOCSPX-…` string trips GitHub secret scanning, which notifies
+  Google, which can disable the credential and break every install
+- a client ID sitting in a public repo can be lifted to burn this project's API
+  quota, or to put this app's name on somebody else's consent screen
+
+A build missing either half prints `[build] … not set — this build cannot sign in
+to Google Drive` and produces an app that says so on its own login screen, rather
+than failing at the last step of an OAuth flow the user already started. Local
+folders keep working either way. **Add both secrets before cutting a release**,
+or the installers will ship unable to sign in.
 
 #### Who can sign in
 
@@ -316,6 +322,11 @@ npm run test:e2e       # builds, then drives the real app
 | **E2E** (`tests/e2e`) | Playwright launches the built app: add a source, play through the stream server, autoplay next, watched checkmarks, mkv remux, bookmarks, resume after restart, search, theme, source removal. |
 
 Test media is generated once with ffmpeg into `tests/.fixtures/` (gitignored).
+
+The login-gate specs need non-empty `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+at build time, because the sign-in button only renders when the build has both
+halves of the credential. Any values work — no e2e test completes a real sign-in —
+so a gitignored `.env` locally, and placeholders in `ci.yml`, are enough.
 
 ## Installing
 

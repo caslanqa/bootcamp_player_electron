@@ -12,19 +12,29 @@ try {
   // No .env — the env var may still come from the shell or from CI.
 }
 
-// Kept out of git: this repository is public, and a committed GOCSPX- string
-// trips GitHub secret scanning, which can get the credential disabled.
-//   echo 'GOOGLE_CLIENT_SECRET=...' > .env     # or export it
+// Kept out of git. See the header of src/main/config.ts for why both halves are
+// injected rather than committed.
+//   printf 'GOOGLE_CLIENT_ID=...\nGOOGLE_CLIENT_SECRET=...\n' > .env
+const googleClientId = process.env.GOOGLE_CLIENT_ID ?? ''
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET ?? ''
-if (!googleClientSecret) {
-  console.warn('[build] GOOGLE_CLIENT_SECRET is not set — Google Drive sign-in may fail')
+const missing = [
+  googleClientId ? '' : 'GOOGLE_CLIENT_ID',
+  googleClientSecret ? '' : 'GOOGLE_CLIENT_SECRET'
+].filter(Boolean)
+if (missing.length > 0) {
+  console.warn(
+    `[build] ${missing.join(' and ')} not set — this build cannot sign in to Google Drive`
+  )
 }
 
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     resolve: { alias: shared },
-    define: { __GOOGLE_CLIENT_SECRET__: JSON.stringify(googleClientSecret) },
+    define: {
+      __GOOGLE_CLIENT_ID__: JSON.stringify(googleClientId),
+      __GOOGLE_CLIENT_SECRET__: JSON.stringify(googleClientSecret)
+    },
     build: { rollupOptions: { input: resolve('src/main/index.ts') } }
   },
   preload: {
