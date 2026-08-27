@@ -187,6 +187,52 @@ describe('signIn', () => {
 
 })
 
+describe('granted scopes', () => {
+  const withScope = (scope?: string) => ({
+    autoRedirect: (url: URL) => redirect(url),
+    tokenResponse: () =>
+      new Response(
+        JSON.stringify({
+          access_token: 'at-1',
+          expires_in: 3600,
+          refresh_token: 'rt-1',
+          ...(scope ? { scope } : {})
+        }),
+        { headers: { 'Content-Type': 'application/json' } }
+      )
+  })
+
+  const READ = 'https://www.googleapis.com/auth/drive.readonly'
+  const MANAGE = 'https://www.googleapis.com/auth/drive'
+
+  it('records write access only when Google says it granted it', async () => {
+    const h = harness(withScope(`${READ} ${MANAGE}`))
+    await h.auth.signIn({ manage: true })
+    expect(h.auth.hasManageScope()).toBe(true)
+  })
+
+  it('does not claim write access when Google granted only reading', async () => {
+    const h = harness(withScope(READ))
+    await h.auth.signIn({ manage: true })
+    expect(h.auth.hasManageScope()).toBe(false)
+  })
+
+  it('does not assume we got what we asked for when Google says nothing', async () => {
+    // Assuming otherwise would light up the admin panel and then 403 on the
+    // first grant, which reads as a broken app rather than a missing scope.
+    const h = harness(withScope(undefined))
+    await h.auth.signIn({ manage: true })
+    expect(h.auth.hasManageScope()).toBe(false)
+    expect(h.stored.scopes).toBeNull()
+  })
+
+  it('a plain sign-in never carries write access', async () => {
+    const h = harness(withScope(READ))
+    await h.auth.signIn()
+    expect(h.auth.hasManageScope()).toBe(false)
+  })
+})
+
 describe('getAccessToken', () => {
   it('fails cleanly when nothing is connected', async () => {
     await expect(harness().auth.getAccessToken()).rejects.toThrow(/not connected/)

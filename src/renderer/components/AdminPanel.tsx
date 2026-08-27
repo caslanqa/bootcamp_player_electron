@@ -22,6 +22,7 @@ export function AdminPanel({ open }: Props): React.JSX.Element | null {
   const [access, setAccess] = useState<AccessEntry[] | null>(null)
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
+  const [elevateTried, setElevateTried] = useState(false)
 
   const run = async (fn: () => Promise<void>): Promise<void> => {
     setBusy(true)
@@ -66,10 +67,22 @@ export function AdminPanel({ open }: Props): React.JSX.Element | null {
             className="btn primary"
             data-testid="admin-elevate"
             disabled={busy}
-            onClick={() => void run(async () => setStatus(await window.api.admin.elevate()))}
+            onClick={() =>
+              void run(async () => {
+                setElevateTried(true)
+                setStatus(await window.api.admin.elevate())
+              })
+            }
           >
             Allow this app to manage sharing
           </button>
+          {elevateTried ? (
+            <p className="hint" data-testid="elevate-failed">
+              Google did not grant write access, so the controls below stay inert. Add{' '}
+              <code>https://www.googleapis.com/auth/drive</code> to the OAuth consent screen’s
+              scope list in Google Cloud Console, then try again.
+            </p>
+          ) : null}
         </>
       ) : null}
 
@@ -93,7 +106,13 @@ export function AdminPanel({ open }: Props): React.JSX.Element | null {
                 className="btn danger"
                 data-name={entry.email ?? entry.id}
                 disabled={busy || !status.canManage || entry.isOwner}
-                title={entry.isOwner ? 'The owner cannot be removed' : 'Revoke access'}
+                title={
+                  entry.isOwner
+                    ? 'The owner cannot be removed'
+                    : status.canManage
+                      ? 'Revoke access'
+                      : 'Needs Drive write permission — use the button above'
+                }
                 onClick={() =>
                   void run(async () => setAccess(await window.api.admin.revoke(entry.id)))
                 }
@@ -127,12 +146,14 @@ export function AdminPanel({ open }: Props): React.JSX.Element | null {
           placeholder="student@example.com"
           style={{ flex: 1 }}
           disabled={!status.canManage}
+          title={status.canManage ? '' : 'Needs Drive write permission — use the button above'}
         />
         <button
           type="submit"
           className="btn primary"
           data-testid="grant-access"
           disabled={busy || !status.canManage || email.trim().length === 0}
+          title={status.canManage ? '' : 'Needs Drive write permission — use the button above'}
         >
           Grant access
         </button>

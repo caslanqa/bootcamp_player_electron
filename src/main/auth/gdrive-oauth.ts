@@ -206,7 +206,13 @@ export class GDriveAuth {
       this.accessToken = json.access_token
       this.expiresAt = Date.now() + (json.expires_in - 60) * 1000
       const email = await this.fetchEmail(json.access_token)
-      this.deps.saveToken(this.deps.encrypt(json.refresh_token, remember), email, json.scope ?? scopes.join(' '))
+      // Only what Google says it granted. Falling back to what we *asked* for
+      // would light up the admin panel and then fail on the first grant.
+      this.deps.saveToken(
+        this.deps.encrypt(json.refresh_token, remember),
+        email,
+        json.scope ?? null
+      )
       return this.status()
     } finally {
       server.close()

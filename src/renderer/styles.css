@@ -680,8 +680,16 @@ legend {
   background: var(--bg-sunken);
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   background: var(--surface-hover);
+}
+
+/* Without this a disabled button looks perfectly clickable, which reads as
+   "the app is broken" rather than "you cannot do this yet". */
+.btn:disabled,
+input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .btn.primary {
