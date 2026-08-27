@@ -506,7 +506,23 @@ shows up as a white tile in the Dock and taskbar.
 
 ## Releasing
 
-Version numbers come from the commit log, and a pushed tag is what publishes.
+Version numbers come from the commit log, and **a tag is what publishes**. There
+are two ways to get one.
+
+**From GitHub** — Actions → *Release* → **Run workflow**, and pick a bump:
+
+| `release` | What happens |
+| --- | --- |
+| `none` | builds the installers only: no tag, no Release, just the artifacts |
+| `auto` | derives the bump from the commits since the last tag |
+| `patch` / `minor` / `major` | forces that level |
+
+Anything but `none` bumps `package.json` and `CHANGELOG.md`, commits, tags,
+pushes, builds all three platforms and attaches the installers to a **GitHub
+Release** named after the tag. Release notes are that version's `CHANGELOG.md`
+section. The `platforms` input narrows the matrix when you only need one OS.
+
+**From your machine**, if you would rather review the changelog before it ships:
 
 ```bash
 npm run release:dry      # what would the next version be, and why
@@ -514,10 +530,12 @@ npm run release          # bump + CHANGELOG + commit + tag, nothing pushed
 git push --follow-tags origin main
 ```
 
-The tag push runs `.github/workflows/release.yml`, which packages all three
-platforms and attaches the installers to a **GitHub Release** named after the tag.
-Release notes are the matching `CHANGELOG.md` section. Build artifacts are also
-kept for 3 days on the run page, as a fallback while a release is being debugged.
+The tag push runs the same workflow. Either way the run also keeps the raw
+installers as a one-day artifact, useful while a release is being debugged.
+
+> The bot pushes the release commit with `GITHUB_TOKEN`, and GitHub does not let
+> such a push start another workflow run — which is exactly what stops the tag
+> trigger from firing a second, duplicate build.
 
 ### Commit convention
 
@@ -547,8 +565,8 @@ husky on `npm install`:
 
 ### Cutting a release
 
-`npm run release` reads every commit since the last tag and picks the bump
-itself:
+`auto`, and `npm run release` with no flag, read every commit since the last tag
+and pick the bump:
 
 | Commit contains | Bump |
 | --- | --- |
@@ -570,7 +588,7 @@ filenames carry it automatically.
 | Workflow | Trigger | Does |
 | --- | --- | --- |
 | `ci.yml` | push to `main`, PRs | commitlint (PRs), typecheck, unit + integration, e2e under xvfb |
-| `release.yml` | `v*` tag, or manual dispatch | package per platform → artifacts → GitHub Release (tag only) |
+| `release.yml` | `v*` tag, or manual dispatch with a bump | tag → package per platform → artifacts → GitHub Release |
 
 All three jobs run on GitHub-hosted runners: `macos-latest`, `windows-latest`,
 `ubuntu-latest`.

@@ -1,13 +1,25 @@
 name: Release
 
-# `npm run release` writes the tag; pushing it is what publishes.
-#   git push --follow-tags origin main
-# workflow_dispatch builds the installers without publishing anything.
+# Two ways in:
+#   - pick a bump under "Run workflow" and this run tags, builds and publishes
+#   - push a v* tag yourself (npm run release && git push --follow-tags)
+# Choosing "none" only builds installers: no tag, no Release.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
     inputs:
+      release:
+        description: 'Version bump'
+        required: true
+        type: choice
+        default: none
+        options:
+          - none
+          - auto
+          - patch
+          - minor
+          - major
       platforms:
         description: 'Platforms to build'
         required: true
@@ -20,8 +32,77 @@ on:
           - linux
 
 jobs:
+  # Bumps package.json + CHANGELOG.md, commits, tags and pushes. A push made
+  # with GITHUB_TOKEN does not start another workflow run, so this cannot loop
+  # back through the tag trigger — this same run goes on to build and publish.
+  version:
+    name: tag
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.release != 'none'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # bump.mts reads every commit since the last tag.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Identify the committer
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      # No npm ci on purpose: bump.mts needs nothing but node, and skipping the
+      # install also skips the husky hooks, which have nothing to add here.
+      - name: Bump and tag
+        id: bump
+        run: |
+          set -euo pipefail
+          level=''
+          if [ "${{ github.event.inputs.release }}" != 'auto' ]; then
+            level="--${{ github.event.inputs.release }}"
+          fi
+          node scripts/release/bump.mts $level
+
+          # "auto" with only chores to show finds nothing to release and stops.
+          # An empty output then makes the publish job skip itself.
+          if tag="$(git describe --exact-match --tags HEAD 2>/dev/null)"; then
+            echo "tag=$tag" >>"$GITHUB_OUTPUT"
+            echo "Tagged $tag"
+          else
+            echo 'tag=' >>"$GITHUB_OUTPUT"
+            echo 'Nothing to release — no tag created.'
+          fi
+
+      - name: Push the commit and tag
+        if: steps.bump.outputs.tag != ''
+        run: git push --follow-tags origin HEAD:${{ github.ref_name }}
+
+      - name: Summary
+        run: |
+          {
+            if [ -n '${{ steps.bump.outputs.tag }}' ]; then
+              echo '### Tagged ${{ steps.bump.outputs.tag }}'
+            else
+              echo '### No release'
+              echo ''
+              echo 'No feat, fix or breaking change since the last tag. Choose an'
+              echo 'explicit patch, minor or major if you want one anyway.'
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+
   build:
     name: ${{ matrix.name }}
+    needs: version
+    # `version` is skipped on a tag push and for release=none; neither is a failure.
+    if: always() && (needs.version.result == 'success' || needs.version.result == 'skipped')
     # Every platform packages itself: @ffmpeg-installer only fetches the host's
     # binary, so a cross-built app would ship without ffmpeg. That applies to the
     # CPU architecture too — macos-latest is arm64, hence arm64-only mac builds.
@@ -60,6 +141,10 @@ jobs:
 
       - uses: actions/checkout@v4
         if: steps.gate.outputs.run == 'true'
+        with:
+          # Build the tag this run just created, so the installer filenames carry
+          # the version being published. Empty falls back to the trigger ref.
+          ref: ${{ needs.version.outputs.tag || github.ref }}
 
       - uses: actions/setup-node@v4
         if: steps.gate.outputs.run == 'true'
@@ -107,14 +192,23 @@ jobs:
 
   publish:
     name: GitHub Release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, build]
+    # Publish whenever this run has a tag to publish: one it just created, or one
+    # that was pushed by hand. Never for a plain "none" build.
+    if: >-
+      always() && needs.build.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') || needs.version.outputs.tag != '')
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
+    env:
+      TAG: ${{ needs.version.outputs.tag || github.ref_name }}
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag || github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
@@ -127,19 +221,37 @@ jobs:
           merge-multiple: true
 
       - name: Build release notes from CHANGELOG
-        run: node scripts/release/notes.mts "${{ github.ref_name }}" > RELEASE_NOTES.md
+        run: node scripts/release/notes.mts "$TAG" > RELEASE_NOTES.md
 
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "Bootcamp Player ${{ github.ref_name }}" \
+          gh release create "$TAG" \
+            --title "Bootcamp Player $TAG" \
             --notes-file RELEASE_NOTES.md \
             installers/*
 
       - name: Summary
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ env.TAG }}
           REPO: ${{ github.repository }}
         run: scripts/ci/release-summary.sh
+
+  # Closes the loop for a "none" run, so nobody hunts for a Release that was
+  # never meant to exist.
+  explain:
+    name: no release
+    needs: [version, build]
+    if: always() && needs.build.result == 'success' && github.event.inputs.release == 'none'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say why
+        run: |
+          {
+            echo '### Installers built, nothing published'
+            echo ''
+            echo 'You picked **none**, so this run created no tag and no Release —'
+            echo 'just the one-day artifacts. Run it again with a bump (patch,'
+            echo 'minor, major or auto) to tag and publish.'
+          } >>"$GITHUB_STEP_SUMMARY"
