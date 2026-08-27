@@ -6,7 +6,7 @@ const CLIENT_ID = 'test-client.apps.googleusercontent.com'
 
 interface Harness {
   auth: GDriveAuth
-  stored: { token: string | null; email: string | null }
+  stored: { token: string | null; email: string | null; scopes: string | null }
   authUrl(): URL
   tokenCalls: Array<Record<string, string>>
 }
@@ -19,9 +19,12 @@ function harness(options: {
   autoRedirect?: (url: URL) => Promise<void>
   tokenResponse?: (form: Record<string, string>) => Response
   credentials?: { clientId: string; clientSecret: string }
-  roster?: string[]
 } = {}): Harness {
-  const stored = { token: null as string | null, email: null as string | null }
+  const stored = {
+    token: null as string | null,
+    email: null as string | null,
+    scopes: null as string | null
+  }
   const tokenCalls: Array<Record<string, string>> = []
   let seen: URL | null = null
 
@@ -55,21 +58,18 @@ function harness(options: {
       if (options.autoRedirect) await options.autoRedirect(seen)
     },
     // Reversible stand-in for safeStorage so the assertions can see the payload.
-    encrypt: (plain) => `enc(${plain})`,
+    encrypt: (plain, remember) => (remember ? `enc(${plain})` : `session(${plain})`),
     decrypt: (cipher) => {
-      const m = /^enc\((.*)\)$/.exec(cipher)
+      const m = /^(?:enc|session)\((.*)\)$/.exec(cipher)
       if (!m) throw new Error('cannot decrypt')
       return m[1]
     },
     getCredentials: () => options.credentials ?? { clientId: CLIENT_ID, clientSecret: 'shh' },
-    isOnRoster: (email) =>
-      !options.roster || options.roster.length === 0
-        ? true
-        : options.roster.some((e) => e.toLowerCase() === (email ?? '').toLowerCase()),
     loadToken: () => ({ ...stored }),
-    saveToken: (token, email) => {
+    saveToken: (token, email, scopes) => {
       stored.token = token
       stored.email = email
+      if (scopes !== undefined) stored.scopes = scopes
     },
     fetchImpl
   }
@@ -176,18 +176,6 @@ describe('signIn', () => {
     await expect(h.auth.signIn()).rejects.toThrow(/no refresh token/)
   })
 
-  it('accepts an account that is on the roster', async () => {
-    const h = harness({ autoRedirect: (url) => redirect(url), roster: ['ME@example.com'] })
-    await expect(h.auth.signIn()).resolves.toMatchObject({ signedIn: true })
-    expect(h.stored.token).toBe('enc(rt-1)')
-  })
-
-  it('refuses an account that is not, and keeps no token', async () => {
-    const h = harness({ autoRedirect: (url) => redirect(url), roster: ['someone@else.com'] })
-    await expect(h.auth.signIn()).rejects.toThrow(/not on the course roster/)
-    expect(h.stored.token).toBeNull()
-    await expect(h.auth.getAccessToken()).rejects.toThrow(/not connected/)
-  })
 })
 
 describe('getAccessToken', () => {
@@ -234,7 +222,7 @@ describe('signOut', () => {
     await h.auth.signIn()
     const status = await h.auth.signOut()
     expect(status.signedIn).toBe(false)
-    expect(h.stored).toEqual({ token: null, email: null })
+    expect(h.stored).toMatchObject({ token: null, email: null })
     await expect(h.auth.getAccessToken()).rejects.toThrow(/not connected/)
   })
 })

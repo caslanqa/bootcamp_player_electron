@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type {
   Bookmark,
+  GDriveStatus,
   DataSource,
   MediaNode,
   PrepareMode,
@@ -32,6 +33,9 @@ interface AppState {
   preparing: PrepareProgress | null
   bookmarks: Bookmark[]
   error: string | null
+  driveStatus: GDriveStatus | null
+  /** Set when the user chooses a local folder over signing in. */
+  loginSkipped: boolean
 
   init(): Promise<void>
   patchSettings(patch: Partial<Settings>): Promise<void>
@@ -39,6 +43,10 @@ interface AppState {
   removeSource(id: string): Promise<void>
   selectSource(id: string): Promise<void>
   reloadSources(): Promise<void>
+  refreshDriveStatus(): Promise<void>
+  signInWithGoogle(remember: boolean): Promise<void>
+  signOutOfGoogle(): Promise<void>
+  skipLogin(): void
   loadChildren(parentId?: string): Promise<void>
   toggleFolder(node: MediaNode): Promise<void>
   play(node: MediaNode): Promise<void>
@@ -86,10 +94,15 @@ export const useStore = create<AppState>((set, get) => {
     preparing: null,
     bookmarks: [],
     error: null,
+    driveStatus: null,
+    loginSkipped: false,
 
     async init() {
-      const settings = await window.api.settings.get()
-      set({ settings, ready: true })
+      const [settings, driveStatus] = await Promise.all([
+        window.api.settings.get(),
+        window.api.gdrive.status()
+      ])
+      set({ settings, driveStatus, ready: true })
       window.api.media.onPrepareProgress((p) => {
         set({ preparing: p.done && !p.error ? null : p })
         if (p.error) get().fail(p.error)
@@ -115,6 +128,34 @@ export const useStore = create<AppState>((set, get) => {
       const wasActive = get().settings.activeSourceId === id
       set({ settings, ...(wasActive ? { tree: {}, expanded: {}, current: null } : {}) })
       if (wasActive && settings.activeSourceId) await get().loadChildren()
+    },
+
+    async refreshDriveStatus() {
+      set({ driveStatus: await window.api.gdrive.status() })
+    },
+
+    /**
+     * Sign-in is the membership check: main creates the course source only when
+     * Google hands back a token for an account the folder is shared with.
+     */
+    async signInWithGoogle(remember) {
+      try {
+        const driveStatus = await window.api.gdrive.signIn({ remember })
+        set({ driveStatus, error: null })
+        await get().reloadSources()
+      } catch (err) {
+        get().fail((err as Error).message)
+      }
+    },
+
+    async signOutOfGoogle() {
+      const driveStatus = await window.api.gdrive.signOut()
+      set({ driveStatus, loginSkipped: false })
+      await get().reloadSources()
+    },
+
+    skipLogin() {
+      set({ loginSkipped: true })
     },
 
     /** Settings changed in main (Drive sign-in/out adds or drops the fixed source). */

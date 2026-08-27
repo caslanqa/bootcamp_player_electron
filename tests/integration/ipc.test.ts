@@ -31,6 +31,20 @@ const { buildFixtures, ffmpegUsable } = await import('../helpers/fixtures')
 const { ROOT_KEY } = await import('../../src/renderer/lib/tree')
 const { DRIVE_SOURCE_ID, GDRIVE } = await import('../../src/main/config')
 
+/** Mutable stand-ins so a test can put itself in the owner's shoes. */
+const authState = {
+  signedIn: false,
+  email: undefined as string | undefined,
+  manage: false
+}
+const adminState = {
+  canRead: true,
+  owner: null as string | null,
+  access: [] as Array<{ id: string; email: string | null }>,
+  granted: [] as string[],
+  revoked: [] as string[]
+}
+
 const HAS_FFMPEG = await ffmpegUsable()
 
 /** Invoke a registered handler the way ipcMain would (event arg first). */
@@ -55,6 +69,14 @@ afterEach(async () => {
 })
 
 beforeEach(async () => {
+  authState.signedIn = false
+  authState.email = undefined
+  authState.manage = false
+  adminState.canRead = true
+  adminState.owner = null
+  adminState.access = []
+  adminState.granted = []
+  adminState.revoked = []
   mocks.handlers.clear()
   mocks.showOpenDialog.mockReset()
   const dir = mkdtempSync(join(tmpdir(), 'bootcamp-ipc-'))
@@ -82,10 +104,30 @@ beforeEach(async () => {
     server,
     preparer,
     auth: {
-      status: () => ({ configured: false, signedIn: false }),
-      signIn: async () => ({ configured: true, signedIn: true }),
-      signOut: async () => ({ configured: true, signedIn: false }),
+      status: () => ({ configured: true, signedIn: authState.signedIn, email: authState.email }),
+      hasManageScope: () => authState.manage,
+      signIn: async () => {
+        authState.signedIn = true
+        return { configured: true, signedIn: true, email: authState.email }
+      },
+      signOut: async () => {
+        authState.signedIn = false
+        return { configured: true, signedIn: false }
+      },
       getAccessToken: async () => 'unused'
+    } as never,
+    driveAdmin: {
+      canRead: async () => adminState.canRead,
+      ownerEmail: async () => adminState.owner,
+      listAccess: async () => adminState.access,
+      grant: async (email: string) => {
+        adminState.granted.push(email)
+        return adminState.access
+      },
+      revoke: async (id: string) => {
+        adminState.revoked.push(id)
+        return adminState.access
+      }
     } as never,
     window: () => null
   })
@@ -235,6 +277,19 @@ describe('gdrive channel', () => {
     expect(settings.activeSourceId).toBe(DRIVE_SOURCE_ID)
   })
 
+  it('refuses an account the course folder was never shared with', async () => {
+    adminState.canRead = false
+    authState.email = 'outsider@example.com'
+
+    await expect(call('gdrive:signIn')).rejects.toThrow(/does not have access to the course folder/)
+
+    // No half-signed-in state left behind, and no source to click on.
+    expect(authState.signedIn).toBe(false)
+    const settings = await call<Settings>('settings:get')
+    expect(settings.sources).toEqual([])
+    expect(settings.activeSourceId).toBeNull()
+  })
+
   it('signing in twice does not duplicate the source', async () => {
     await call('gdrive:signIn')
     await call('gdrive:signIn')
@@ -265,6 +320,66 @@ describe('gdrive channel', () => {
     await call('gdrive:signOut')
     const settings = await call<Settings>('settings:get')
     expect(settings.activeSourceId).toBe(local.id)
+  })
+})
+
+describe('admin channel', () => {
+  const asOwner = (): void => {
+    authState.signedIn = true
+    authState.email = 'owner@example.com'
+    adminState.owner = 'Owner@Example.com'
+  }
+
+  it('nobody is admin while signed out', async () => {
+    expect(await call('admin:status')).toEqual({ isAdmin: false, canManage: false })
+  })
+
+  it('the folder owner is the admin — no configured email', async () => {
+    asOwner()
+    // Case-insensitive: Google echoes the address in whatever case it stored.
+    expect(await call('admin:status')).toEqual({ isAdmin: true, canManage: false })
+    authState.manage = true
+    expect(await call('admin:status')).toEqual({ isAdmin: true, canManage: true })
+  })
+
+  it('a signed-in non-owner is not the admin', async () => {
+    authState.signedIn = true
+    authState.email = 'student@example.com'
+    adminState.owner = 'owner@example.com'
+    expect(await call('admin:status')).toEqual({ isAdmin: false, canManage: false })
+  })
+
+  it('refuses every management call for a non-owner', async () => {
+    authState.signedIn = true
+    authState.email = 'student@example.com'
+    adminState.owner = 'owner@example.com'
+    await expect(call('admin:list')).rejects.toThrow(/only the course folder owner/i)
+    await expect(call('admin:grant', 'x@y.com')).rejects.toThrow(/only the course folder owner/i)
+    await expect(call('admin:revoke', 'perm-1')).rejects.toThrow(/only the course folder owner/i)
+    expect(adminState.granted).toEqual([])
+    expect(adminState.revoked).toEqual([])
+  })
+
+  it('lets the owner list, grant and revoke', async () => {
+    asOwner()
+    adminState.access = [{ id: 'perm-1', email: 'student@example.com' }]
+    expect(await call('admin:list')).toEqual(adminState.access)
+
+    await call('admin:grant', 'new@example.com')
+    expect(adminState.granted).toEqual(['new@example.com'])
+
+    await call('admin:revoke', 'perm-1')
+    expect(adminState.revoked).toEqual(['perm-1'])
+  })
+
+  it('re-checks the owner after a sign-out, not a cached answer', async () => {
+    asOwner()
+    expect(await call<{ isAdmin: boolean }>('admin:status')).toMatchObject({ isAdmin: true })
+
+    await call('gdrive:signOut')
+    adminState.owner = 'someone-else@example.com'
+    authState.email = undefined
+    expect(await call('admin:status')).toEqual({ isAdmin: false, canManage: false })
   })
 })
 

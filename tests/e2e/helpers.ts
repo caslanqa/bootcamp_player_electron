@@ -23,7 +23,8 @@ export async function launch(userDataDir: string): Promise<Session> {
     env: { ...process.env, BOOTCAMP_USER_DATA: userDataDir }
   })
   const page = await app.firstWindow()
-  await page.waitForSelector('.app')
+  // Either the sign-in gate or the player shell, depending on the profile.
+  await page.waitForSelector('.app, .login')
   return { app, page }
 }
 
@@ -31,10 +32,20 @@ export async function fixtures(): Promise<Fixtures> {
   return buildFixtures()
 }
 
+/**
+ * A first launch lands on the sign-in gate, which has no top bar. Take the
+ * local-folder escape when it is there, otherwise use the normal button.
+ */
+export async function openSettings(page: Page): Promise<void> {
+  const useLocal = page.getByTestId('login-use-local')
+  if (await useLocal.isVisible().catch(() => false)) await useLocal.click()
+  else await page.getByTestId('open-settings').click()
+  await expect(page.getByTestId('settings-dialog')).toBeVisible()
+}
+
 /** Types the path in directly — the native folder picker cannot be driven from a test. */
 export async function addLocalSource(page: Page, root: string, name = 'Course'): Promise<void> {
-  await page.getByTestId('open-settings').click()
-  await expect(page.getByTestId('settings-dialog')).toBeVisible()
+  await openSettings(page)
   await page.getByTestId('local-path').fill(root)
   await page.getByLabel('Local source name').fill(name)
   await page.getByTestId('add-local-source').click()

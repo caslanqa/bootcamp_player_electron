@@ -2,6 +2,8 @@ import { BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import type {
+  AccessEntry,
+  AdminStatus,
   Bookmark,
   DataSource,
   MediaNode,
@@ -12,6 +14,7 @@ import type {
 } from '@shared/types'
 import { subtitleLabelFor } from '@shared/media'
 import { DRIVE_SOURCE_ID, driveRoot, GDRIVE } from './config'
+import type { DriveAdmin } from './drive-admin'
 import type { GDriveAuth } from './auth/gdrive-oauth'
 import type { MediaPreparer } from './media/prepare'
 import type { ProviderRegistry } from './providers/registry'
@@ -26,6 +29,7 @@ export interface AppContext {
   server: StreamServer
   preparer: MediaPreparer
   auth: GDriveAuth
+  driveAdmin: DriveAdmin
   window(): BrowserWindow | null
 }
 
@@ -181,8 +185,20 @@ export function registerIpc(ctx: AppContext): void {
 
   handle('gdrive:status', () => ctx.auth.status())
 
-  handle('gdrive:signIn', async () => {
-    const status = await ctx.auth.signIn()
+  handle('gdrive:signIn', async (options?: { remember?: boolean }) => {
+    const status = await ctx.auth.signIn({ remember: options?.remember })
+    ownerEmail = undefined
+
+    // Membership check, done against Drive rather than a list we maintain: an
+    // account the folder was never shared with cannot read it, full stop.
+    if (!(await ctx.driveAdmin.canRead())) {
+      await ctx.auth.signOut()
+      throw new ProviderError(
+        `${status.email ?? 'That account'} does not have access to the course folder. Ask the course owner to grant it, then sign in again.`,
+        403
+      )
+    }
+
     // The folder is fixed, so the source appears on its own — no form to fill in.
     syncDriveSource(ctx)
     return status
@@ -202,7 +218,51 @@ export function registerIpc(ctx: AppContext): void {
           : current.activeSourceId
     })
     ctx.registry.clear()
+    ownerEmail = undefined
     return status
+  })
+
+  // One network call per session; invalidated whenever the account changes.
+  let ownerEmail: string | null | undefined
+
+  const adminStatus = async (): Promise<AdminStatus> => {
+    const { signedIn, email } = ctx.auth.status()
+    if (!signedIn || !email) return { isAdmin: false, canManage: false }
+    if (ownerEmail === undefined) {
+      ownerEmail = await ctx.driveAdmin.ownerEmail().catch(() => null)
+    }
+    const isAdmin =
+      ownerEmail !== null && ownerEmail.toLowerCase() === email.toLowerCase()
+    return { isAdmin, canManage: isAdmin && ctx.auth.hasManageScope() }
+  }
+
+  const selfEmail = (): string | null => ctx.auth.status().email ?? null
+
+  /** Every admin channel refuses unless the signed-in account owns the folder. */
+  const asAdmin = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const { isAdmin } = await adminStatus()
+    if (!isAdmin) throw new ProviderError('Only the course folder owner can manage access', 403)
+    return fn()
+  }
+
+  handle('admin:status', adminStatus)
+
+  handle('admin:list', (): Promise<AccessEntry[]> =>
+    asAdmin(() => ctx.driveAdmin.listAccess(selfEmail()))
+  )
+
+  handle('admin:grant', (email: string): Promise<AccessEntry[]> =>
+    asAdmin(() => ctx.driveAdmin.grant(email, selfEmail()))
+  )
+
+  handle('admin:revoke', (permissionId: string): Promise<AccessEntry[]> =>
+    asAdmin(() => ctx.driveAdmin.revoke(permissionId, selfEmail()))
+  )
+
+  handle('admin:elevate', async (): Promise<AdminStatus> => {
+    await ctx.auth.signIn({ manage: true, remember: true })
+    ownerEmail = undefined
+    return adminStatus()
   })
 
   handle('win:setMini', (on: boolean) => {

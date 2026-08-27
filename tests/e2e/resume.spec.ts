@@ -5,6 +5,7 @@ import {
   freshProfile,
   launch,
   openFolder,
+  openSettings,
   playLesson,
   seekTo,
   videoState
@@ -55,7 +56,7 @@ test('resumes a lesson at the saved position after a restart', async () => {
 test('keeps settings across a restart', async () => {
   const profile = freshProfile()
   const first = await launch(profile)
-  await first.page.getByTestId('open-settings').click()
+  await openSettings(first.page)
   await first.page.getByTestId('theme-select').selectOption('light')
   await expect(first.page.locator('html')).toHaveAttribute('data-theme', 'light')
   await first.page.getByTestId('close-settings').click()

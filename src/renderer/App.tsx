@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from './store'
+import { LoginScreen } from './components/LoginScreen'
 import { Player } from './components/Player'
 import { Sidebar } from './components/Sidebar'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -10,6 +11,9 @@ export function App(): React.JSX.Element {
   const query = useStore((s) => s.query)
   const setQuery = useStore((s) => s.setQuery)
   const error = useStore((s) => s.error)
+  const driveStatus = useStore((s) => s.driveStatus)
+  const loginSkipped = useStore((s) => s.loginSkipped)
+  const skipLogin = useStore((s) => s.skipLogin)
   const dismissError = useStore((s) => s.dismissError)
   const init = useStore((s) => s.init)
 
@@ -26,6 +30,22 @@ export function App(): React.JSX.Element {
     if (settings.theme === 'system') root.removeAttribute('data-theme')
     else root.setAttribute('data-theme', settings.theme)
   }, [settings.theme])
+
+  // Sign-in gate: skipped once the user has signed in, chosen a local folder,
+  // or already has a source configured from an earlier run.
+  const needsLogin =
+    ready && !loginSkipped && !driveStatus?.signedIn && settings.sources.length === 0
+
+  if (needsLogin) {
+    return (
+      <LoginScreen
+        onUseLocalFolder={() => {
+          skipLogin()
+          setShowSettings(true)
+        }}
+      />
+    )
+  }
 
   return (
     <div className="app">

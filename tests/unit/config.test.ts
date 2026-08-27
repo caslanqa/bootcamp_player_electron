@@ -4,16 +4,13 @@ import {
   driveRoot,
   GDRIVE,
   isDriveConfigured,
-  isOnRoster,
   normalizeFolderId
 } from '../../src/main/config'
 
-const originalRoster = [...GDRIVE.allowedEmails]
 const originalClientId = GDRIVE.clientId
 const originalFolderId = GDRIVE.folderId
 
 afterEach(() => {
-  GDRIVE.allowedEmails = [...originalRoster]
   GDRIVE.clientId = originalClientId
   GDRIVE.folderId = originalFolderId
 })
@@ -26,30 +23,6 @@ describe('isDriveConfigured', () => {
     expect(isDriveConfigured()).toBe(false)
     GDRIVE.clientId = 'abc.apps.googleusercontent.com'
     expect(isDriveConfigured()).toBe(true)
-  })
-})
-
-describe('isOnRoster', () => {
-  it('accepts anyone when the roster is empty', () => {
-    GDRIVE.allowedEmails = []
-    expect(isOnRoster('anyone@example.com')).toBe(true)
-    expect(isOnRoster(null)).toBe(true)
-  })
-
-  it('matches case-insensitively and ignores surrounding space', () => {
-    GDRIVE.allowedEmails = ['  Student@Example.com  ']
-    expect(isOnRoster('student@example.com')).toBe(true)
-    expect(isOnRoster(' STUDENT@EXAMPLE.COM ')).toBe(true)
-  })
-
-  it('rejects an address that is not listed', () => {
-    GDRIVE.allowedEmails = ['student@example.com']
-    expect(isOnRoster('someone@else.com')).toBe(false)
-  })
-
-  it('rejects an unknown address when a roster exists', () => {
-    GDRIVE.allowedEmails = ['student@example.com']
-    expect(isOnRoster(null)).toBe(false)
   })
 })
 

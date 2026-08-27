@@ -1,6 +1,7 @@
 import { Readable } from 'node:stream'
 import type { MediaNode } from '@shared/types'
 import { compareNodes, extOf, isMediaFile, isSubtitleFile, subtitleLabelFor } from '@shared/media'
+import { createAuthedFetch, type AuthedFetch, type TokenProvider } from '../google-fetch'
 import { ProviderError, type StorageProvider } from './types'
 
 const API = 'https://www.googleapis.com/drive/v3'
@@ -15,32 +16,19 @@ export interface DriveFile {
   modifiedTime?: string
 }
 
-/** Injected so tests can drive the provider without a real Google account. */
-export type TokenProvider = (forceRefresh?: boolean) => Promise<string>
-
 /**
  * Read-only Drive backend over plain fetch — the googleapis package is ~50MB
  * for the three calls this needs.
  */
 export class GDriveProvider implements StorageProvider {
+  private readonly request: AuthedFetch
+
   constructor(
     private readonly rootFolderId: string,
-    private readonly getToken: TokenProvider,
-    private readonly fetchImpl: typeof fetch = fetch
-  ) {}
-
-  /** One retry on 401: the access token may simply have aged out. */
-  private async request(url: string, init: RequestInit = {}): Promise<Response> {
-    for (const force of [false, true]) {
-      const token = await this.getToken(force)
-      const res = await this.fetchImpl(url, {
-        ...init,
-        headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` }
-      })
-      if (res.status !== 401) return res
-      if (force) return res
-    }
-    throw new ProviderError('unreachable', 500)
+    getToken: TokenProvider,
+    fetchImpl: typeof fetch = fetch
+  ) {
+    this.request = createAuthedFetch(getToken, fetchImpl)
   }
 
   private async listChildren(parentId: string): Promise<DriveFile[]> {

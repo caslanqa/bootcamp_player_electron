@@ -5,20 +5,37 @@ import type { GDriveCredentials, GDriveStatus } from '@shared/types'
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const REVOKE_URL = 'https://oauth2.googleapis.com/revoke'
-const SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
+/** What a student needs: read the course folder, nothing else. */
+export const READ_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
+
+/**
+ * Additional scope the folder owner needs to grant and revoke access from the
+ * admin panel — permissions.create/delete accept nothing narrower for a folder
+ * the app did not create. Requested only when the admin asks for it, so a
+ * student's consent screen never mentions write access.
+ */
+export const MANAGE_SCOPE = 'https://www.googleapis.com/auth/drive'
 const LOGIN_TIMEOUT_MS = 5 * 60_000
+
+export interface SignInOptions {
+  /** Ask for write access too (admin only). */
+  manage?: boolean
+  /** False keeps the refresh token in memory for this session only. */
+  remember?: boolean
+}
 
 export interface OAuthDeps {
   /** Hand the consent URL to the system browser — never render Google's login in-app. */
   openExternal(url: string): Promise<void>
-  /** OS-keychain-backed encryption; identity functions in tests. */
-  encrypt(plain: string): string
+  /**
+   * OS-keychain-backed encryption; identity functions in tests. `remember: false`
+   * must not put the token on disk.
+   */
+  encrypt(plain: string, remember: boolean): string
   decrypt(cipher: string): string
   getCredentials(): GDriveCredentials
-  /** Roster check applied to the signed-in address; see config.isOnRoster. */
-  isOnRoster(email: string | null): boolean
-  loadToken(): { token: string | null; email: string | null }
-  saveToken(token: string | null, email: string | null): void
+  loadToken(): { token: string | null; email: string | null; scopes: string | null }
+  saveToken(token: string | null, email: string | null, scopes?: string | null): void
   fetchImpl?: typeof fetch
 }
 
@@ -26,6 +43,8 @@ interface TokenResponse {
   access_token: string
   expires_in: number
   refresh_token?: string
+  /** Space-separated list of what Google actually granted. */
+  scope?: string
 }
 
 /**
@@ -49,6 +68,12 @@ export class GDriveAuth {
       signedIn: token !== null,
       email: email ?? undefined
     }
+  }
+
+  /** True once the user has consented to write access as well as reading. */
+  hasManageScope(): boolean {
+    const { scopes } = this.deps.loadToken()
+    return (scopes ?? '').split(/\s+/).includes(MANAGE_SCOPE)
   }
 
   private refreshToken(): string | null {
@@ -83,7 +108,7 @@ export class GDriveAuth {
     })
     if (!res.ok) {
       // A dead refresh token can never recover; drop it so the UI asks for a new login.
-      this.deps.saveToken(null, null)
+      this.deps.saveToken(null, null, null)
       throw new Error(`Token refresh failed: ${res.status} ${await res.text()}`)
     }
     const json = (await res.json()) as TokenResponse
@@ -92,7 +117,9 @@ export class GDriveAuth {
     return this.accessToken
   }
 
-  async signIn(): Promise<GDriveStatus> {
+  async signIn(options: SignInOptions = {}): Promise<GDriveStatus> {
+    const remember = options.remember !== false
+    const scopes = options.manage ? [READ_SCOPE, MANAGE_SCOPE] : [READ_SCOPE]
     const { clientId, clientSecret } = this.deps.getCredentials()
     if (!clientId.trim()) {
       throw new Error('This build has no Google client ID — see src/main/config.ts')
@@ -108,7 +135,9 @@ export class GDriveAuth {
         client_id: clientId,
         redirect_uri: `http://127.0.0.1:${port}`,
         response_type: 'code',
-        scope: SCOPE,
+        scope: scopes.join(' '),
+        // Keeps read access when the admin later consents to write as well.
+        include_granted_scopes: 'true',
         code_challenge: challenge,
         code_challenge_method: 'S256',
         state,
@@ -141,16 +170,7 @@ export class GDriveAuth {
       this.accessToken = json.access_token
       this.expiresAt = Date.now() + (json.expires_in - 60) * 1000
       const email = await this.fetchEmail(json.access_token)
-      if (!this.deps.isOnRoster(email)) {
-        // Hand the grant back rather than sitting on a token we will not use.
-        this.accessToken = null
-        this.expiresAt = 0
-        await this.revoke(json.refresh_token)
-        throw new Error(
-          `${email ?? 'That Google account'} is not on the course roster. Sign in with the account the course folder was shared with.`
-        )
-      }
-      this.deps.saveToken(this.deps.encrypt(json.refresh_token), email)
+      this.deps.saveToken(this.deps.encrypt(json.refresh_token, remember), email, json.scope ?? scopes.join(' '))
       return this.status()
     } finally {
       server.close()
@@ -161,7 +181,7 @@ export class GDriveAuth {
     const refresh = this.refreshToken()
     this.accessToken = null
     this.expiresAt = 0
-    this.deps.saveToken(null, null)
+    this.deps.saveToken(null, null, null)
     if (refresh) await this.revoke(refresh)
     return this.status()
   }

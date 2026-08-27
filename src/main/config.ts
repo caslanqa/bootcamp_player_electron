@@ -31,18 +31,7 @@ export const GDRIVE = {
   folderId: '1S_bC1BqGhFSuhktVhi8yXlOb03gEpxZf',
 
   /** Shown in the source picker. */
-  sourceName: 'Bootcamp course',
-
-  /**
-   * Optional convenience gate, so someone outside the cohort gets a clear
-   * message instead of an empty playlist.
-   *
-   * NOT a security boundary: a desktop app can be patched, and this list ships
-   * inside it. Real enforcement is Drive's own sharing on the folder plus the
-   * OAuth consent screen's user list — Google rejects everyone else before the
-   * app ever sees a token. Leave empty to accept any account Google let through.
-   */
-  allowedEmails: [] as string[]
+  sourceName: 'Bootcamp course'
 }
 
 /** False when this build has no client ID compiled in — the UI says so plainly. */
@@ -65,14 +54,6 @@ export function normalizeFolderId(value: string): string {
 /** The configured course root, ready to hand to the Drive provider. */
 export function driveRoot(): string {
   return normalizeFolderId(GDRIVE.folderId)
-}
-
-/** Empty roster means "trust whoever Google authenticated". */
-export function isOnRoster(email: string | null): boolean {
-  if (GDRIVE.allowedEmails.length === 0) return true
-  if (!email) return false
-  const wanted = email.trim().toLowerCase()
-  return GDRIVE.allowedEmails.some((entry) => entry.trim().toLowerCase() === wanted)
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { DataSource } from '@shared/types'
-import { GDriveProvider, type TokenProvider } from './gdrive'
+import { GDriveProvider } from './gdrive'
+import type { TokenProvider } from '../google-fetch'
 import { LocalProvider } from './local'
 import { ProviderError, type StorageProvider } from './types'
 

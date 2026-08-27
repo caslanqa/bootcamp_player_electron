@@ -43,8 +43,15 @@ const api: Api = {
   },
   gdrive: {
     status: () => invoke('gdrive:status'),
-    signIn: () => invoke('gdrive:signIn'),
+    signIn: (options) => invoke('gdrive:signIn', options),
     signOut: () => invoke('gdrive:signOut')
+  },
+  admin: {
+    status: () => invoke('admin:status'),
+    list: () => invoke('admin:list'),
+    grant: (email) => invoke('admin:grant', email),
+    revoke: (permissionId) => invoke('admin:revoke', permissionId),
+    elevate: () => invoke('admin:elevate')
   },
   win: {
     setMini: (on) => invoke('win:setMini', on)

@@ -2,7 +2,8 @@ import { app, BrowserWindow, Menu, nativeTheme, safeStorage, shell } from 'elect
 import { join } from 'node:path'
 import type { Settings } from '@shared/types'
 import { GDriveAuth } from './auth/gdrive-oauth'
-import { GDRIVE, isOnRoster } from './config'
+import { driveRoot, GDRIVE } from './config'
+import { DriveAdmin } from './drive-admin'
 import { registerIpc, syncDriveSource, type AppContext } from './ipc'
 import { MediaPreparer } from './media/prepare'
 import { ProviderRegistry } from './providers/registry'
@@ -94,15 +95,17 @@ async function boot(): Promise<void> {
 
   // A memory-only token cannot survive a restart; drop the stale marker.
   if (library.get().gdriveToken === MEMORY_MARKER && !memoryToken.refresh) {
-    library.set({ gdriveToken: null, gdriveEmail: null })
+    library.set({ gdriveToken: null, gdriveEmail: null, gdriveScopes: null })
   }
 
   nativeTheme.themeSource = settings.get().theme
 
   const auth = new GDriveAuth({
     openExternal: (url) => shell.openExternal(url),
-    encrypt: (plain) => {
-      if (safeStorage.isEncryptionAvailable()) {
+    // "Remember me" off, or no OS keychain: hold the token in RAM only, so it
+     // dies with the process and never reaches disk.
+    encrypt: (plain, remember) => {
+      if (remember && safeStorage.isEncryptionAvailable()) {
         return safeStorage.encryptString(plain).toString('base64')
       }
       memoryToken.refresh = plain
@@ -116,12 +119,17 @@ async function boot(): Promise<void> {
       return safeStorage.decryptString(Buffer.from(cipher, 'base64'))
     },
     getCredentials: () => GDRIVE,
-    isOnRoster,
     loadToken: () => ({
       token: library.get().gdriveToken,
-      email: library.get().gdriveEmail
+      email: library.get().gdriveEmail,
+      scopes: library.get().gdriveScopes
     }),
-    saveToken: (token, email) => library.set({ gdriveToken: token, gdriveEmail: email })
+    saveToken: (token, email, scopes) =>
+      library.set({
+        gdriveToken: token,
+        gdriveEmail: email,
+        gdriveScopes: scopes === undefined ? library.get().gdriveScopes : scopes
+      })
   })
 
   const registry = new ProviderRegistry(
@@ -149,6 +157,7 @@ async function boot(): Promise<void> {
     server,
     preparer,
     auth,
+    driveAdmin: new DriveAdmin(driveRoot(), (force) => auth.getAccessToken(force)),
     window: () => mainWindow
   }
   registerIpc(context)

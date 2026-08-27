@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { GDriveStatus, ThemeSetting } from '@shared/types'
 import { useStore } from '../store'
+import { AdminPanel } from './AdminPanel'
 
 interface Props {
   open: boolean
@@ -26,6 +27,7 @@ export function SettingsDialog({ open, onClose }: Props): React.JSX.Element {
   const patchSettings = useStore((s) => s.patchSettings)
   const addSource = useStore((s) => s.addSource)
   const reloadSources = useStore((s) => s.reloadSources)
+  const signOutOfGoogle = useStore((s) => s.signOutOfGoogle)
   const removeSource = useStore((s) => s.removeSource)
   const fail = useStore((s) => s.fail)
 
@@ -161,8 +163,8 @@ export function SettingsDialog({ open, onClose }: Props): React.JSX.Element {
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
-                    setDrive(await window.api.gdrive.signOut())
-                    await reloadSources()
+                    await signOutOfGoogle()
+                    setDrive(await window.api.gdrive.status())
                   })
                 }
               >
@@ -198,6 +200,8 @@ export function SettingsDialog({ open, onClose }: Props): React.JSX.Element {
             </>
           )}
         </fieldset>
+
+        <AdminPanel open={open} />
 
         <fieldset>
           <legend>Playback</legend>

@@ -74,13 +74,16 @@ export interface LibraryData {
   /** Encrypted (safeStorage) Google refresh token, base64. */
   gdriveToken: string | null
   gdriveEmail: string | null
+  /** Space-separated scopes Google actually granted, so the UI knows what it may offer. */
+  gdriveScopes: string | null
 }
 
 export const DEFAULT_LIBRARY: LibraryData = {
   progress: {},
   bookmarks: {},
   gdriveToken: null,
-  gdriveEmail: null
+  gdriveEmail: null,
+  gdriveScopes: null
 }
 
 /**

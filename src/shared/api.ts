@@ -1,4 +1,6 @@
 import type {
+  AccessEntry,
+  AdminStatus,
   Bookmark,
   DataSource,
   GDriveStatus,
@@ -48,8 +50,18 @@ export interface Api {
   }
   gdrive: {
     status(): Promise<GDriveStatus>
-    signIn(): Promise<GDriveStatus>
+    /** `remember: false` keeps the token in memory for this session only. */
+    signIn(options?: { remember?: boolean }): Promise<GDriveStatus>
     signOut(): Promise<GDriveStatus>
+  }
+  /** Only meaningful for the account that owns the course folder. */
+  admin: {
+    status(): Promise<AdminStatus>
+    list(): Promise<AccessEntry[]>
+    grant(email: string): Promise<AccessEntry[]>
+    revoke(permissionId: string): Promise<AccessEntry[]>
+    /** Re-run consent asking for Drive write access. */
+    elevate(): Promise<AdminStatus>
   }
   win: {
     /** Shrinks the OS window and pins it on top. HTML fullscreen is renderer-side. */

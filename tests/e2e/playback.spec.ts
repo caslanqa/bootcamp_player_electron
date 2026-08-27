@@ -24,10 +24,18 @@ test.afterAll(async () => {
   await session.app.close()
 })
 
-test('starts with no source and an explanatory placeholder', async () => {
+test('a first launch asks you to sign in before anything else', async () => {
   const solo = await launch(freshProfile())
+  await expect(solo.page.getByTestId('login-google')).toBeVisible()
+  await expect(solo.page.getByTestId('login-remember')).toBeChecked()
+  // No player behind the gate.
+  await expect(solo.page.locator('.topbar')).toHaveCount(0)
+
+  // The local-folder escape drops the gate and opens Settings.
+  await solo.page.getByTestId('login-use-local').click()
+  await expect(solo.page.getByTestId('settings-dialog')).toBeVisible()
+  await solo.page.getByTestId('close-settings').click()
   await expect(solo.page.getByTestId('stage-placeholder')).toBeVisible()
-  await expect(solo.page.getByText('No data source configured')).toBeVisible()
   await solo.app.close()
 })
 

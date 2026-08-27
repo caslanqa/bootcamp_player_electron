@@ -756,3 +756,82 @@ legend {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* ---------- login gate ---------- */
+
+.login {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+  overflow-y: auto;
+}
+
+.login-card {
+  width: min(440px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  text-align: center;
+  padding: 32px 28px 26px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -0.02em;
+}
+
+.login-card img {
+  border-radius: 20px;
+}
+
+.login-lead {
+  margin: 0;
+  color: var(--text-dim);
+  max-width: 34ch;
+}
+
+.login-card .error-bar {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+
+.login-google {
+  width: 100%;
+  min-height: 40px;
+  font-weight: 600;
+}
+
+.login-remember {
+  color: var(--text-dim);
+}
+
+.login-card .hint {
+  text-align: left;
+}
+
+.login-alt {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding-top: 14px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.login-alt a {
+  color: var(--text-faint);
+}
+
+.login-alt a:hover {
+  color: var(--accent);
+}
