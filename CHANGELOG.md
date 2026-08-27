@@ -6,6 +6,26 @@ All notable changes, generated from [Conventional Commits](https://www.conventio
 by `npm run release`. Do not edit released sections by hand — one bullet per
 commit, so lines run long on purpose.
 
+## 1.1.0 — 2026-08-27
+
+### ⚠ Breaking changes
+
+- **BREAKING** **ui:** open on a Google sign-in gate, add an owner-only access panel ([d67d0da](https://github.com/caslanqa/bootcamp_player_electron/commit/d67d0dae8c0648e7ce782097215470a6985cfc9a))
+- **BREAKING** **drive:** ship the client id and course folder, drop the credentials form ([48f01b4](https://github.com/caslanqa/bootcamp_player_electron/commit/48f01b47ebb2356fc979a4bea62a2c9be8c8a862))
+
+### Features
+
+- **release:** add versioned release pipeline with GitHub Releases ([cee2e39](https://github.com/caslanqa/bootcamp_player_electron/commit/cee2e3953e14fc14ad43e6c94b500b8875f83647))
+
+### Fixes
+
+- **ci:** release job edited to github release ([71711f8](https://github.com/caslanqa/bootcamp_player_electron/commit/71711f89b89db6409c5b4c6f24c105e1ea6c4e22))
+- **ci:** stop electron-builder from auto-publishing ([202f34b](https://github.com/caslanqa/bootcamp_player_electron/commit/202f34b36b0c64d4d4966cad9377aa4ee3e2a970))
+
+### CI
+
+- build macOS on a hosted runner, drop the x64 mac target ([6ed3a32](https://github.com/caslanqa/bootcamp_player_electron/commit/6ed3a327f328c8739693dc9a8f43924083ad4fd4))
+
 ## 1.0.0 — 2026-08-27
 
 First release.
