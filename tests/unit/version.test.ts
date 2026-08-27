@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   bumpFor,
+  bumpLockfile,
   extractSection,
   FIELD_SEP,
   nextVersion,
@@ -241,5 +242,56 @@ describe('extractSection', () => {
 
   it('returns empty for an unknown version', () => {
     expect(extractSection(changelog, '9.9.9')).toBe('')
+  })
+})
+
+describe('bumpLockfile', () => {
+  const lock = JSON.stringify(
+    {
+      name: 'bootcamp_player_electron',
+      version: '1.0.0',
+      lockfileVersion: 3,
+      packages: {
+        '': { name: 'bootcamp_player_electron', version: '1.0.0', license: 'ISC' },
+        'node_modules/react': { version: '19.2.8' }
+      }
+    },
+    null,
+    2
+  )
+
+  it('sets both version fields npm keeps', () => {
+    const out = JSON.parse(bumpLockfile(lock, '1.2.1')) as {
+      version: string
+      packages: Record<string, { version: string }>
+    }
+    expect(out.version).toBe('1.2.1')
+    expect(out.packages[''].version).toBe('1.2.1')
+  })
+
+  it('leaves dependency versions alone', () => {
+    const out = JSON.parse(bumpLockfile(lock, '9.9.9')) as {
+      packages: Record<string, { version: string }>
+    }
+    expect(out.packages['node_modules/react'].version).toBe('19.2.8')
+  })
+
+  it('keeps the rest of the document intact', () => {
+    const out = JSON.parse(bumpLockfile(lock, '2.0.0')) as Record<string, unknown>
+    expect(out.name).toBe('bootcamp_player_electron')
+    expect(out.lockfileVersion).toBe(3)
+  })
+
+  it('writes npm formatting: two spaces and a trailing newline', () => {
+    const out = bumpLockfile(lock, '1.2.1')
+    expect(out.endsWith('\n')).toBe(true)
+    expect(out).toContain('\n  "version": "1.2.1"')
+  })
+
+  it('tolerates a lockfile missing either field', () => {
+    expect(JSON.parse(bumpLockfile('{"packages":{"":{}}}', '1.0.1'))).toEqual({
+      packages: { '': {} }
+    })
+    expect(JSON.parse(bumpLockfile('{"version":"1.0.0"}', '1.0.1'))).toEqual({ version: '1.0.1' })
   })
 })

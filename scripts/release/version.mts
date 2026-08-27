@@ -67,6 +67,26 @@ export function bumpFor(commits: ParsedCommit[]): Bump {
   return 'none'
 }
 
+/**
+ * Set the two `version` fields npm keeps in a lockfile: the root one and the
+ * root package entry. Done by hand rather than through `npm version` so the
+ * release job needs no node_modules and no npm behaviour to be true.
+ *
+ * Leaving the lockfile behind is not cosmetic: the next `npm install` rewrites
+ * it, the tree goes dirty, and the release after that refuses to run.
+ */
+export function bumpLockfile(raw: string, version: string): string {
+  const lock = JSON.parse(raw) as {
+    version?: string
+    packages?: Record<string, { version?: string }>
+  }
+  if (lock.version !== undefined) lock.version = version
+  const root = lock.packages?.['']
+  if (root?.version !== undefined) root.version = version
+  // npm writes two-space JSON with a trailing newline.
+  return `${JSON.stringify(lock, null, 2)}\n`
+}
+
 export function nextVersion(current: string, bump: Bump): string {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(current.trim())
   if (!match) throw new Error(`Not a plain semver version: "${current}"`)

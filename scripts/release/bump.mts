@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import {
   bumpFor,
+  bumpLockfile,
   FIELD_SEP,
   nextVersion,
   parseLog,
@@ -23,6 +24,7 @@ import {
 } from './version.mts'
 
 const CHANGELOG = 'CHANGELOG.md'
+const LOCKFILE = 'package-lock.json'
 
 function git(...args: string[]): string {
   return execFileSync('git', args, { encoding: 'utf8' }).trim()
@@ -103,10 +105,17 @@ if (dryRun) {
 }
 
 writeFileSync('package.json', pkgRaw.replace(/"version": ".*?"/, `"version": "${version}"`))
+
+// The lockfile carries the version too. Leaving it behind means the next
+// `npm install` rewrites it, the tree goes dirty, and the release after that
+// refuses to run.
+if (existsSync(LOCKFILE)) {
+  writeFileSync(LOCKFILE, bumpLockfile(readFileSync(LOCKFILE, 'utf8'), version))
+}
 const existing = existsSync(CHANGELOG) ? readFileSync(CHANGELOG, 'utf8') : '# Changelog\n'
 writeFileSync(CHANGELOG, prependChangelog(existing, section))
 
-git('add', 'package.json', CHANGELOG)
+git('add', 'package.json', LOCKFILE, CHANGELOG)
 git('commit', '-m', `chore(release): ${tag}`)
 git('tag', '-a', tag, '-m', tag)
 
