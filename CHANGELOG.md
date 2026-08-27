@@ -6,6 +6,17 @@ All notable changes, generated from [Conventional Commits](https://www.conventio
 by `npm run release`. Do not edit released sections by hand — one bullet per
 commit, so lines run long on purpose.
 
+## [2.0.0](https://github.com/caslanqa/bootcamp_player_electron/compare/v1.2.0...v2.0.0) — 2026-08-27
+
+### ⚠ Breaking changes
+
+- **BREAKING** **drive:** drop the in-app access panel, ask only for read access ([4c7ee60](https://github.com/caslanqa/bootcamp_player_electron/commit/4c7ee60e89aabe40a8f77d43cc8a36bed898c092))
+
+### Fixes
+
+- **release:** keep package-lock in step with the version bump ([6a35e04](https://github.com/caslanqa/bootcamp_player_electron/commit/6a35e04a7c1f69b776a70a50fc2306308234f536))
+- **ui:** show why the admin controls are inert ([95437c6](https://github.com/caslanqa/bootcamp_player_electron/commit/95437c6fa8e0db25f9eebd3dbba1a11902729485))
+
 ## [1.2.0](https://github.com/caslanqa/bootcamp_player_electron/compare/v1.1.0...v1.2.0) — 2026-08-27
 
 ### Features
